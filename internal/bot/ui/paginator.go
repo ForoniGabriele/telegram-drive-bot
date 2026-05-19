@@ -28,7 +28,7 @@ func FormatFileLine(index int, f *model.File, botUsername string) string {
 	if f.Caption != "" {
 		preview := util.CompactLines(util.TruncateString(html.EscapeString(f.Caption), 50))
 		if preview != "" {
-			line += fmt.Sprintf("   📝 %s\n", preview)
+			line += fmt.Sprintf("   📝 %s\n\n", preview)
 		}
 	}
 	return line
