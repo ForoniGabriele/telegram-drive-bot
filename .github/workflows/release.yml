@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOAMD64: v1
+          CGO_ENABLED: 0
+        run: |
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          mkdir -p dist
+          go build \
+            -trimpath \
+            -buildvcs=false \
+            -ldflags="-s -w -buildid=" \
+            -o "dist/tg-drive-bot${ext}" \
+            ./cmd/bot
+
+      - name: Package tar.gz
+        id: pkg
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          pkg_name="tg-drive-bot_${GITHUB_REF_NAME}_${GOOS}_${GOARCH}"
+          mkdir -p "pkg/${pkg_name}"
+          cp "dist/tg-drive-bot${ext}" "pkg/${pkg_name}/"
+          cp .env.example "pkg/${pkg_name}/"
+          tar -C pkg -czf "${pkg_name}.tar.gz" "${pkg_name}"
+          echo "pkg_name=${pkg_name}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.pkg.outputs.pkg_name }}
+          path: ${{ steps.pkg.outputs.pkg_name }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with tags)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Extract tag message
+        id: tag
+        run: |
+          # 读取 annotated tag 的描述;lightweight tag 会得到空字符串
+          body=$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")
+          {
+            echo "body<<__EOF_BODY__"
+            echo "$body"
+            echo "__EOF_BODY__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.tag.outputs.body }}
+          files: dist/*.tar.gz
+          fail_on_unmatched_files: true

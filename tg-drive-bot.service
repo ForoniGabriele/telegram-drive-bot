@@ -1,0 +1,16 @@
+[Unit]
+Description=Telegram Drive Bot Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+# 项目所在的工作目录
+WorkingDirectory=/path/to/tg-drive-bot
+# 启动命令
+ExecStart=/path/to/tg-drive-bot/tg-drive-bot
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

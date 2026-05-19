@@ -1,0 +1,64 @@
+name: Dev Deploy
+
+on:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: read
+
+jobs:
+  build-deploy:
+    name: Build & Upload ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            output: tg-drive-bot
+            key: tg_drive_bot/linux_amd64/tg-drive-bot
+          - goos: windows
+            goarch: amd64
+            output: tg-drive-bot.exe
+            key: tg_drive_bot/windows_amd64/tg-drive-bot.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOAMD64: v1
+          CGO_ENABLED: 0
+        run: |
+          go build \
+            -trimpath \
+            -buildvcs=false \
+            -ldflags="-s -w -buildid=" \
+            -o "${{ matrix.output }}" \
+            ./cmd/bot
+
+      - name: Upload to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: "true"
+          # 关闭 aws-cli v2 默认的完整性校验,避免 R2 拒绝带 checksum 头的请求
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+        run: |
+          aws s3 cp "${{ matrix.output }}" \
+            "s3://${{ secrets.R2_BUCKET }}/${{ matrix.key }}" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}"
