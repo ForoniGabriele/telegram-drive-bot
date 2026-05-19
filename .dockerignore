@@ -1,0 +1,39 @@
+# 构建产物
+bin/
+dist/
+pkg/
+
+# 运行时数据 (绝不要进入镜像)
+data/
+
+# 本地敏感配置 (镜像里只保留 .env.example)
+.env
+.env.local
+.env.*.local
+
+# Git 元数据 (使用 -buildvcs=false 后也不需要)
+.git/
+.gitignore
+.gitattributes
+
+# CI / 编辑器
+.github/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Docker 自身
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+
+# 文档与许可
+LICENSE
+README*.md
+docs/
+
+# 其它
+skills-lock.json
+tg-drive-bot.service

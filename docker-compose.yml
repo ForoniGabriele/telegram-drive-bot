@@ -1,0 +1,147 @@
+# ============================================================
+# tg-drive-bot — docker compose
+#
+# 使用方式:
+#   1) cp .env.example .env 并按需修改  (compose 会自动读取同目录的 .env)
+#   2) docker compose up -d
+#
+# 也可以直接覆写变量:  BOT_TOKEN=xxx docker compose up -d
+# ============================================================
+
+services:
+  bot:
+    # 方式 A: 拉取已发布的镜像 (推荐, tag 发布后由 GHCR workflow 自动构建)
+    image: ghcr.io/merack/tg-drive-bot:latest
+    # 方式 B: 本地源码构建 (调试/二次开发时使用,取消下面三行注释并把 image 行注掉)
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+
+    container_name: tg-drive-bot
+    restart: unless-stopped
+
+    # 应用使用 Telegram long polling,无需对外暴露端口
+
+    # 持久化 telebot 流缓存 / 状态存储 (位于容器内 /app/data)
+    volumes:
+      - ./data:/app/data
+
+    # 建议使用supabase提供的远程PostgreSQL 服务
+    # 若启用了下方本地 PostgreSQL 服务,取消注释让 bot 等待 DB 就绪
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
+
+    environment:
+      # ========== 必填项 ==========
+
+      # Telegram Bot Token (从 @BotFather 获取)
+      BOT_TOKEN: ${BOT_TOKEN:?BOT_TOKEN is required}
+
+      # 超级管理员的 Telegram user_id
+      OWNER_ID: ${OWNER_ID:?OWNER_ID is required}
+
+      # PostgreSQL 连接串
+      # ────────────────────────────────────────────────────────────
+      # 【推荐】使用 Supabase 托管 PostgreSQL:
+      #   1. 免运维, 自带 pgvector / 备份 / 监控
+      #   2. 免费 tier ~15 个并发连接 (默认连接池配置已对此适配)
+      #   3. 在 Supabase 项目设置 -> Database -> Connection string 复制 URI
+      #   4. 示例: postgres://postgres.xxx:password@aws-0-xx.pooler.supabase.com:5432/postgres
+      #
+      # 【备用】若启用下方 postgres 服务使用本地数据库, 用此连接串:
+      #   DATABASE_URL=postgres://tgbot:tgbot@postgres:5432/tgbot?sslmode=disable
+      # ────────────────────────────────────────────────────────────
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+
+      # ========== 存储模式 ==========
+
+      # 是否启用频道存储模式 (默认 true)
+      # true: 文件转发到存储频道保存, 取回时从频道复制 (更可靠)
+      # false: 直接使用 Telegram file_id 发送文件 (更轻量, 无需存储频道)
+      USE_CHANNEL_STORAGE: ${USE_CHANNEL_STORAGE:-true}
+
+      # 存储频道/超级群组 chat_id 列表, 逗号分隔 (以 -100 开头)
+      # USE_CHANNEL_STORAGE=true 时必填. 第一个为主副本, 后续为冗余副本.
+      STORAGE_CHAT_IDS: ${STORAGE_CHAT_IDS:-}
+
+      # 删除文件时是否同步清理存储频道里的副本 (默认 true, 仅 channel 模式生效)
+      DELETE_CHANNEL_COPIES: ${DELETE_CHANNEL_COPIES:-true}
+
+      # ========== 可选项: 频道健康追踪 ==========
+      # 单频道连续失败 STORAGE_FAILURE_LIMIT 次后进入 STORAGE_COOLDOWN_PERIOD 冷却
+      STORAGE_FAILURE_LIMIT: ${STORAGE_FAILURE_LIMIT:-3}
+      STORAGE_COOLDOWN_PERIOD: ${STORAGE_COOLDOWN_PERIOD:-5m}
+
+      # ========== 可选项: 异步频道操作 ==========
+      # 启用后频道转发/删除走后台 goroutine, 用户响应更快, 失败仅记录日志
+      ASYNC_FORWARD: ${ASYNC_FORWARD:-false}
+      ASYNC_DELETE: ${ASYNC_DELETE:-false}
+
+      # ========== 可选项: 数据库连接池 ==========
+      # 默认值对 Supabase free tier (~15 conn 配额) 友好
+      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-10}
+      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-5}
+      DB_CONN_MAX_LIFETIME: ${DB_CONN_MAX_LIFETIME:-30m}
+      DB_CONN_MAX_IDLE_TIME: ${DB_CONN_MAX_IDLE_TIME:-5m}
+
+      # ========== 可选项: 日志 ==========
+      # LOG_FORMAT: text (本地开发) | json (日志采集)
+      # LOG_LEVEL : debug | info | warn | error
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # ========== 可选项: 代理 ==========
+      # 支持 socks5:// 或 http://, 留空不使用代理
+      PROXY_URL: ${PROXY_URL:-}
+
+      # ========== 可选项: 向量搜索 ==========
+      # 启用后搜索时优先使用 AI 语义搜索, 失败再降级到全文/模糊搜索
+      # 注意: 启用此功能要求数据库已安装 pgvector 扩展
+      #       - Supabase: 在 Database -> Extensions 启用 vector
+      #       - 本地 PG : 已使用下方的 pgvector/pgvector:pg17 镜像
+      VECTOR_SEARCH_ENABLED: ${VECTOR_SEARCH_ENABLED:-false}
+      EMBEDDING_API_TYPE: ${EMBEDDING_API_TYPE:-openai}       # openai | gemini
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-256}
+      EMBEDDING_THRESHOLD: ${EMBEDDING_THRESHOLD:-0.4}
+
+  # ============================================================
+  # 本地 PostgreSQL (默认禁用)
+  # ────────────────────────────────────────────────────────────
+  # 默认建议使用 Supabase (见上方 DATABASE_URL 注释), 无需运维 + 自带 pgvector.
+  # 若你希望完全本地化部署, 按以下步骤启用本服务:
+  #
+  #   1. 取消 postgres 服务定义和 volume 的注释
+  #   2. 取消 bot 服务 depends_on 的注释
+  #   3. 在 .env 设置:
+  #        POSTGRES_PASSWORD=<强密码>
+  #        DATABASE_URL=postgres://tgbot:<密码>@postgres:5432/tgbot?sslmode=disable
+  #   4. docker compose up -d
+  #
+  # 使用 pgvector/pgvector 镜像是为了让 VECTOR_SEARCH_ENABLED 开箱即用,
+  # 该镜像基于官方 postgres 镜像,体积略大但兼容性完全一致.
+  # ============================================================
+  # postgres:
+  #   image: pgvector/pgvector:pg17
+  #   container_name: tg-drive-bot-postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_USER: tgbot
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required when using local postgres}
+  #     POSTGRES_DB: tgbot
+  #   volumes:
+  #     - pg_data:/var/lib/postgresql/data
+  #   # 仅在需要 host 直连排查时打开端口映射, 默认仅容器网络内可达
+  #   # ports:
+  #   #   - "127.0.0.1:5432:5432"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U tgbot -d tgbot"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+# volumes:
+#   pg_data:
