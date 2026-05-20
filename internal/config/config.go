@@ -101,7 +101,7 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("OWNER_ID must be a valid integer: %w", err)
 	}
 
-	useChannelStorage := true
+	useChannelStorage := false
 	if v := os.Getenv("USE_CHANNEL_STORAGE"); v != "" {
 		useChannelStorage = strings.EqualFold(v, "true") || v == "1"
 	}
