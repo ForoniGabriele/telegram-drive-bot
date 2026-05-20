@@ -10,28 +10,22 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Config holds all configuration values loaded from environment variables.
-// Fields are grouped by concern for clarity as the project grows.
 type Config struct {
-	Bot       BotConfig
-	DB        DBConfig
-	Storage   StorageConfig
-	Security  SecurityConfig
-	Embedding EmbeddingConfig
+	Bot         BotConfig
+	DB          DBConfig
+	Storage     StorageConfig
+	Security    SecurityConfig
+	Embedding   EmbeddingConfig
+	Maintenance MaintenanceConfig
 }
 
-// BotConfig covers the Telegram bot and outbound network settings.
 type BotConfig struct {
 	Token    string
 	ProxyURL string // Optional. SOCKS5 (socks5://host:port) or HTTP (http://host:port) proxy for Telegram API.
 }
 
-// DBConfig covers the database connection and connection-pool tuning.
-//
-// Pool tuning matters for a remote database such as Supabase — open connections are a
-// limited resource and every query pays TLS round-trip setup. The defaults match typical
-// hobby-tier quotas (ie. Supabase free tier allows ~15 open connections per client),
-// leaving headroom for a human-run psql client at the same time.
+// 数据库连接参数调优
+// 默认参数是为supabase 免费层级的15个连接调的
 type DBConfig struct {
 	URL             string
 	MaxOpenConns    int           // Hard cap on open connections (default: 10)
@@ -59,13 +53,22 @@ type SecurityConfig struct {
 // EmbeddingConfig covers the optional vector search feature.
 // When Enabled is false the remaining fields are ignored and vector search is a no-op.
 type EmbeddingConfig struct {
-	Enabled    bool   // VECTOR_SEARCH_ENABLED
-	APIType    string // EMBEDDING_API_TYPE — "openai" or "gemini"
-	BaseURL    string // EMBEDDING_BASE_URL — embedding API base URL
-	APIKey     string // EMBEDDING_API_KEY
+	Enabled    bool    // VECTOR_SEARCH_ENABLED
+	APIType    string  // EMBEDDING_API_TYPE — "openai" or "gemini"
+	BaseURL    string  // EMBEDDING_BASE_URL — embedding API base URL
+	APIKey     string  // EMBEDDING_API_KEY
 	Model      string  // EMBEDDING_MODEL  — e.g. "text-embedding-3-small" or "gemini-embedding-2"
 	Dimensions int     // EMBEDDING_DIMENSIONS — vector dimensionality (default 256)
 	Threshold  float64 // EMBEDDING_THRESHOLD — max cosine distance for vector search
+}
+
+// MaintenanceConfig 控制后台维护任务的执行节奏
+// 目前只有 cap_sync 一个任务,后续如果加 emb_sync 等定时任务再往这里扩
+type MaintenanceConfig struct {
+	// CapSyncInterval 控制定时 caption 同步的周期
+	// 0 表示禁用后台任务(此时仍可通过 /cap_sync 手动触发)
+	// 由 CAP_SYNC_INTERVAL 解析,空串视为禁用
+	CapSyncInterval time.Duration
 }
 
 // Default values for tunables not exposed as env vars today.
@@ -82,9 +85,8 @@ const (
 	defaultEmbeddingThreshold  = 0.4
 )
 
-// Load reads environment variables and returns a validated Config.
-// It first attempts to load a .env file from the working directory.
-// If no .env file exists, environment variables must be set directly.
+// 首先尝试从工作目录中加载 .env 文件
+// 如果不存在 .env 文件，则必须直接设置环境变量
 func Load() (*Config, error) {
 	_ = godotenv.Load()
 
@@ -172,6 +174,13 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	// CAP_SYNC_INTERVAL 未设 = 0 = 关闭后台任务
+	// 设了正值 = 后台 ticker 周期; parseDurationEnv 已经拒绝 <= 0 的显式输入
+	capSyncInterval, err := parseDurationEnv("CAP_SYNC_INTERVAL", 0)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		Bot: BotConfig{
 			Token:    botToken,
@@ -197,6 +206,9 @@ func Load() (*Config, error) {
 			OwnerID: ownerID,
 		},
 		Embedding: embCfg,
+		Maintenance: MaintenanceConfig{
+			CapSyncInterval: capSyncInterval,
+		},
 	}, nil
 }
 

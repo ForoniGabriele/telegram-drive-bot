@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"strings"
+	"unicode/utf16"
 )
 
 // FormatFileSize formats bytes into human-readable size string.
@@ -101,4 +102,33 @@ func CompactLines(s string) string {
 		}
 	}
 	return strings.Join(kept, "  ")
+}
+
+// TruncateCaption 按 Telegram 的 caption 长度上限(UTF-16 code units)截断字符串
+// Telegram 服务器对 caption 的长度计数与 JavaScript 的 String.length 一致 -- 即 UTF-16 code units
+// BMP 内字符占 1 unit, 大多数 emoji(代理对) 占 2 units, 所以不能用 rune 数估算
+// 不会追加 "..." -- 这是给文件 caption 用的, 调用方已经处理好提示信息, 截断标记反而干扰阅读
+// 截断时避免拆开代理对, 防止产生无效的 UTF-16 序列
+func TruncateCaption(s string, maxUTF16Units int) string {
+	if maxUTF16Units <= 0 {
+		return ""
+	}
+	used := 0
+	for i, r := range s {
+		w := 1
+		if r > 0xFFFF {
+			w = 2
+		}
+		if used+w > maxUTF16Units {
+			return s[:i]
+		}
+		used += w
+	}
+	return s
+}
+
+// CaptionUTF16Len 返回字符串以 UTF-16 code units 计的长度
+// 主要用于 caption 长度判断 -- 与 Telegram 服务器侧的计数方式一致
+func CaptionUTF16Len(s string) int {
+	return len(utf16.Encode([]rune(s)))
 }

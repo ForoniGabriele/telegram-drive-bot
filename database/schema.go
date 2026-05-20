@@ -7,12 +7,11 @@ import (
 )
 
 // PreMigrate 在 GORM AutoMigrate 之前执行的 DDL
-// 主要是列改名 / 列删除 -- AutoMigrate 不会处理这两种变更,且对已有数据敏感
+// 主要是列改名 / 列删除 -- AutoMigrate 不会处理这两种变更,且对已有数据的列敏感
 // 必须在 AutoMigrate 之前,否则 GORM 看到 Go 模型上的新字段会尝试 ADD COLUMN,
-// 而对 NOT NULL 列加列时,旧行的 NULL 会触发约束错误
 func PreMigrate(db *gorm.DB) error {
 	statements := []string{
-		// 一次性迁移:把 file_id 列改名为 bot_file_id(对应 model.File.BotFileID)
+		// 把 file_id 列改名为 bot_file_id(对应 model.File.BotFileID)
 		// 仅当旧列还存在时执行,幂等
 		`DO $$
 		BEGIN
@@ -24,7 +23,7 @@ func PreMigrate(db *gorm.DB) error {
 			END IF;
 		END $$`,
 
-		// 一次性迁移:删除已废弃的 thumbnail_file_id 列(代码层从未读取)
+		// 删除已废弃的 thumbnail_file_id 列(代码层从未读取)
 		`ALTER TABLE files DROP COLUMN IF EXISTS thumbnail_file_id`,
 	}
 

@@ -48,7 +48,7 @@ jobs:
 
       # 自动生成 tag, 同时应用到 GHCR 和 Docker Hub 两个 registry:
       #   - main 分支       -> main
-      #   - v1.2.3 tag      -> v1.2.3, 1.2.3, 1.2, latest
+      #   - v1.2.3 会同时打上4个tag      -> v1.2.3, 1.2.3, 1.2, latest
       - name: Compute image tags
         id: meta
         uses: docker/metadata-action@v6

@@ -29,18 +29,21 @@ func main() {
 }
 
 func run() int {
+	// 初始化log
 	if _, err := logger.Init(os.Stderr); err != nil {
 		// logger not ready yet — fall back to stderr
 		slog.New(slog.NewTextHandler(os.Stderr, nil)).Error("init logger failed", "error", err)
 		return 1
 	}
 
+	// 加载环境变量
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("load config failed", "error", err)
 		return 1
 	}
 
+	// 获取db
 	db, err := openDB(cfg)
 	if err != nil {
 		slog.Error("connect database failed", "error", err)
@@ -48,36 +51,40 @@ func run() int {
 	}
 	defer closeDB(db)
 
+	// 表初始化
 	if err := initializeSchema(db, cfg); err != nil {
 		slog.Error("schema initialization failed", "error", err)
 		return 1
 	}
 
+	// 数据仓库
 	repos := repository.NewRepos(db)
 	uow := repository.NewGormUnitOfWork(db)
 
-	// EmbeddingService is nil when vector search is disabled — all consumers handle nil safely.
+	// 各种服务
 	embeddingSvc := service.NewEmbeddingService(cfg.Embedding, db, repos.File)
-
 	userService := service.NewUserService(repos.User)
 	fileService := service.NewFileService(repos, uow, embeddingSvc, cfg.Storage.AsyncForward, cfg.Storage.AsyncDelete)
 	maintenanceSvc := service.NewMaintenanceService(repos.Maintenance)
 
+	// 确认系统有owner
 	if err := userService.EnsureOwner(cfg.Security.OwnerID); err != nil {
 		slog.Error("ensure owner failed", "error", err)
 		return 1
 	}
 	slog.Info("owner ensured", "telegram_id", cfg.Security.OwnerID)
 
+	// 初始化存储
 	store := newStorage(cfg)
 
+	// 初始化bot
 	b, err := bot.New(cfg, userService, fileService, embeddingSvc, maintenanceSvc, store)
 	if err != nil {
 		slog.Error("create bot failed", "error", err)
 		return 1
 	}
 
-	return serve(b, embeddingSvc)
+	return serve(b, embeddingSvc, maintenanceSvc, cfg.Maintenance.CapSyncInterval)
 }
 
 // 使用config里的配置连接db
@@ -127,8 +134,7 @@ func closeDB(db *gorm.DB) {
 	slog.Info("database closed")
 }
 
-// initializeSchema creates tables via GORM AutoMigrate and then applies the hand-written
-// PostgreSQL schema setup (generated columns, full-text search indexes, pgvector embedding column).
+// 数据库表的初始化
 //
 // 执行顺序很关键:
 //  1. PreMigrate    -- 列改名/删除(AutoMigrate 不会做这两件事;且对 NOT NULL 列改名必须先行)
@@ -154,6 +160,7 @@ func initializeSchema(db *gorm.DB, cfg *config.Config) error {
 	return nil
 }
 
+// 初始化存储
 // 决定使用direct和是channel 模式的storage
 func newStorage(cfg *config.Config) storage.Storage {
 	if !cfg.Storage.UseChannel {
@@ -180,7 +187,7 @@ func newStorage(cfg *config.Config) storage.Storage {
 }
 
 // 用goroutine来启动bot, 防止b.Start()阻塞主进程, 手动处理各种信号
-func serve(b *tele.Bot, embeddingSvc *service.EmbeddingService) int {
+func serve(b *tele.Bot, embeddingSvc *service.EmbeddingService, maintenanceSvc *service.MaintenanceService, capSyncInterval time.Duration) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -188,6 +195,9 @@ func serve(b *tele.Bot, embeddingSvc *service.EmbeddingService) int {
 	if embeddingSvc != nil {
 		go embeddingSvc.Start(ctx)
 	}
+
+	// 启动定时 cap_sync 任务; interval <= 0 时 Start 自身会立即返回, 这里无需额外判断
+	go maintenanceSvc.Start(ctx, capSyncInterval)
 
 	started := make(chan struct{})
 	done := make(chan struct{})

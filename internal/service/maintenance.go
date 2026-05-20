@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync/atomic"
+	"time"
 
 	"tg-drive-bot/internal/repository"
 )
@@ -49,4 +50,36 @@ func (s *MaintenanceService) RunCaptionSync(_ context.Context) (CapSyncResult, e
 		"files_updated", result.FilesUpdated,
 		"messages_updated", result.MessagesUpdated)
 	return result, nil
+}
+
+// Start 启动后台定时 cap_sync 任务,按 interval 周期触发
+// interval <= 0 时直接返回,不开 goroutine -- 调用方据此实现"未配置则不启用"的语义
+// 为避免冷启动给数据库制造无谓的事务,首次执行也要等满一个 interval 之后才发生
+// 与手动 /cap_sync 共享同一把互斥锁:并发触发时其中一方拿到 ErrCapSyncBusy,
+// 这里把它当做正常情况静默跳过,避免日志噪音
+// 通过 ctx.Done() 退出 -- 主进程 SIGINT/SIGTERM 会触发
+func (s *MaintenanceService) Start(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		return
+	}
+
+	slog.Info("cap_sync background worker started", "interval", interval)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("cap_sync background worker stopped")
+			return
+		case <-ticker.C:
+			if _, err := s.RunCaptionSync(ctx); err != nil {
+				if errors.Is(err, ErrCapSyncBusy) {
+					slog.Debug("cap_sync skipped: previous run still in progress")
+					continue
+				}
+				// 错误已经在 RunCaptionSync 里 log 过了, 这里不重复
+			}
+		}
+	}
 }

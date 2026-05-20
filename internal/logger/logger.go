@@ -8,16 +8,15 @@ import (
 	"strings"
 )
 
-// Init configures the default slog logger based on environment variables:
+// 根据环境变量配置默认的 slog 日志记录器：
 //
-//	LOG_FORMAT  text (default) | json
-//	LOG_LEVEL   debug | info (default) | warn | error
+//	LOG_FORMAT  text (默认值) | json
+//	LOG_LEVEL   debug | info (默认值) | warn | error
 //
-// Once set, code elsewhere should use slog.Info / slog.Warn / slog.Error / slog.Debug
-// via the default package logger.
+// 一旦设置，其他地方的代码应通过默认的包级日志记录器使用
+// slog.Info / slog.Warn / slog.Error / slog.Debug
 //
-// Returns the configured *slog.Logger so callers may attach it to other systems
-// (e.g. a GORM logger bridge).
+// 返回配置好的 *slog.Logger，以便调用者可以将其附加到其他系统（例如 GORM 的日志桥接器）
 func Init(w io.Writer) (*slog.Logger, error) {
 	if w == nil {
 		w = os.Stderr

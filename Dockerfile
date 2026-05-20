@@ -50,7 +50,7 @@ WORKDIR /app
 COPY --from=builder /out/tg-drive-bot /app/tg-drive-bot
 COPY --chown=app:app .env.example /app/.env.example
 
-# 运行时数据目录 (telebot 流缓存、状态存储),建议通过 volume 持久化
+# 运行时数据目录, 目前没有东西要放到data里, 先写了为以后其他留着(比如日志之类的)
 RUN mkdir -p /app/data && chown -R app:app /app
 
 USER app

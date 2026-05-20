@@ -225,14 +225,21 @@ func buildFileCaption(file *model.File) string {
 		fileName = typeName
 	}
 
-	text := fmt.Sprintf(
+	header := fmt.Sprintf(
 		"📋 文件信息\n━━━━━━━━━━━━━━━\n%s 文件名: %s\n📦 大小: %s\n📅 存入时间: %s\n━━━━━━━━━━━━━━━",
 		icon, fileName, size, file.CreatedAt.Format(constants.DateFull),
 	)
 
-	if file.Caption != "" {
-		text += fmt.Sprintf("\n\n%s", file.Caption)
+	if file.Caption == "" {
+		return util.TruncateCaption(header, constants.CaptionMaxUTF16)
 	}
 
-	return text
+	// caption 上限按 UTF-16 计 -- 优先保留 header, 不够时再截断用户 caption
+	headerLen := util.CaptionUTF16Len(header)
+	const sepLen = 2 // "\n\n"
+	remaining := constants.CaptionMaxUTF16 - headerLen - sepLen
+	if remaining <= 0 {
+		return util.TruncateCaption(header, constants.CaptionMaxUTF16)
+	}
+	return header + "\n\n" + util.TruncateCaption(file.Caption, remaining)
 }

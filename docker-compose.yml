@@ -12,6 +12,7 @@ services:
   bot:
     # 方式 A: 拉取已发布的镜像 (推荐, tag 发布后由 GHCR workflow 自动构建)
     image: ghcr.io/merack/tg-drive-bot:latest
+    # 可选docker hub镜像 image: merack/tg-drive-bot:latest
     # 方式 B: 本地源码构建 (调试/二次开发时使用,取消下面三行注释并把 image 行注掉)
     # build:
     #   context: .

@@ -1,9 +1,11 @@
 package storage
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,8 +31,8 @@ type Storage interface {
 
 	// 将存储的文件发送给用户，并返回发送成功的消息
 	// copies 是该文件副本在已知的存储channel中的位置（在 direct 模式下为空）
-	// 在 direct 模式下，caption会直接包含在媒体消息中
-	// 在 channel 模式下，它会按顺序尝试每个副本；此时caption会被忽略, 因为 copyMessage 会保留原始消息的内容, 可以用其他的API替换copyMessage来修改caption, 后面有时间再做
+	// caption 在两种模式下都会作为消息的 caption 发送 -- channel 模式通过 copyMessage 的 caption 参数覆盖原始 caption,
+	// 与 direct 模式表现一致
 	// 当 channel 模式存在副本但全部发送失败时，返回 ErrAllCopiesFailed，以便代码决定是否回退到 direct 模式发送
 	SendFileToUser(bot tele.API, userChat *tele.Chat, file *model.File, copies []model.CopyLocation, caption string) (*tele.Message, error)
 
@@ -194,9 +196,9 @@ func (ch *Channel) copyOne(bot tele.API, msg *tele.Message, chatID int64) (model
 }
 
 // 按顺序尝试发送每个副本，直到成功为止，并返回发送成功的消息
-// 暂时先不处理caption, 后面有时间再说
+// 通过 copyMessageWithCaption 强制覆盖 caption,使 channel 模式与 direct 模式表现一致
 // 当没有任何副本发送成功或未提供副本列表时，返回 ErrAllCopiesFailed
-func (ch *Channel) SendFileToUser(bot tele.API, userChat *tele.Chat, file *model.File, copies []model.CopyLocation, _ string) (*tele.Message, error) {
+func (ch *Channel) SendFileToUser(bot tele.API, userChat *tele.Chat, file *model.File, copies []model.CopyLocation, caption string) (*tele.Message, error) {
 	if len(copies) == 0 {
 		return nil, ErrAllCopiesFailed
 	}
@@ -207,7 +209,7 @@ func (ch *Channel) SendFileToUser(bot tele.API, userChat *tele.Chat, file *model
 			continue
 		}
 		storedMsg := &tele.Message{ID: loc.MsgID, Chat: &tele.Chat{ID: loc.ChatID}}
-		sent, err := bot.Copy(userChat, storedMsg)
+		sent, err := copyMessageWithCaption(bot, userChat, storedMsg, caption)
 		if err != nil {
 			lastErr = err
 			ch.health.markFailureFromError(loc.ChatID, err)
@@ -262,4 +264,35 @@ func isMessageGoneErr(err error) bool {
 	return strings.Contains(s, "message to delete not found") ||
 		strings.Contains(s, "MESSAGE_ID_INVALID") ||
 		strings.Contains(s, "message not found")
+}
+
+// copyMessageWithCaption 通过 Bot API 的 copyMessage 端点复制一条消息,并允许覆盖 caption
+// telebot.v4 的 Bot.Copy 没有暴露 caption 参数,这里直接走 Raw 构造请求
+// caption 以纯文本形式发送(不传 parse_mode),避免原始 caption 中的特殊字符被误判为 Markdown/HTML
+// 截断由调用方在 buildXxxCaption 阶段完成 -- 这里不再处理长度
+//
+// 注意: Raw 内部已经处理了 API 错误 -- 当返回 err == nil 时, data 一定包含一个有效的 result 字段
+func copyMessageWithCaption(bot tele.API, to *tele.Chat, from *tele.Message, caption string) (*tele.Message, error) {
+	params := map[string]string{
+		"chat_id":      strconv.FormatInt(to.ID, 10),
+		"from_chat_id": strconv.FormatInt(from.Chat.ID, 10),
+		"message_id":   strconv.Itoa(from.ID),
+		"caption":      caption,
+	}
+
+	data, err := bot.Raw("copyMessage", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Result *tele.Message `json:"result"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("decode copyMessage response: %w", err)
+	}
+	if resp.Result == nil {
+		return nil, fmt.Errorf("copyMessage returned empty result")
+	}
+	return resp.Result, nil
 }
