@@ -94,3 +94,19 @@ const Welcome = `👋 欢迎使用 TG Drive Bot!
 /randv [数量] - 随机返回视频
 /randp [数量] - 随机返回图片
 /tph <url> - 抓取 telegra.ph 文章为 Markdown 并保存`
+
+// WelcomeAdminExtra lists admin-only commands appended to Welcome for admins/owners.
+const WelcomeAdminExtra = `
+
+🛡️ 管理员命令:
+/adduser <user_id> - 添加白名单用户
+/removeuser <user_id> - 移除白名单用户
+/listuser - 查看用户列表`
+
+// WelcomeOwnerExtra lists owner-only commands appended after WelcomeAdminExtra for the owner.
+const WelcomeOwnerExtra = `
+
+👑 Owner 命令:
+/emb_re - 全量重做 embedding
+/emb_sync - 补缺失 embedding
+/cap_sync - 补全媒体组 caption`

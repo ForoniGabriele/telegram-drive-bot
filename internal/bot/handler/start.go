@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"tg-drive-bot/internal/bot/msg"
+	"tg-drive-bot/internal/constants"
 	"tg-drive-bot/internal/service"
 	"tg-drive-bot/internal/storage"
 
@@ -46,7 +47,29 @@ func (h *StartHandler) OnStart(c tele.Context) error {
 		return h.sendFileByUniqueID(c, fileUniqueID, user.ID)
 	}
 
-	return c.Send(msg.Welcome)
+	return c.Send(buildWelcome(currentRole(c)))
+}
+
+// currentRole 从上下文取当前用户角色; 取不到时按普通用户处理(降级,不暴露额外命令)
+func currentRole(c tele.Context) constants.Role {
+	user, ok := RequireUser(c)
+	if !ok {
+		return constants.RoleUser
+	}
+	return constants.Role(user.Role)
+}
+
+// buildWelcome 按角色拼接欢迎消息: admin 追加管理员段, owner 在此基础上再追加 owner 段
+func buildWelcome(role constants.Role) string {
+	var b strings.Builder
+	b.WriteString(msg.Welcome)
+	if role.IsAdminOrOwner() {
+		b.WriteString(msg.WelcomeAdminExtra)
+	}
+	if role.IsOwner() {
+		b.WriteString(msg.WelcomeOwnerExtra)
+	}
+	return b.String()
 }
 
 // 从数据库获取文件并且将其投递到用户的聊天窗口
