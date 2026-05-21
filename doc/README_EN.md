@@ -32,6 +32,9 @@ A personal media metadata management and retrieval tool built on top of a Telegr
 - [License](#license)
 
 ---
+| menu |
+|:---:|
+| ![list](../img/tgbot-list.png) |
 
 ## Features
 
