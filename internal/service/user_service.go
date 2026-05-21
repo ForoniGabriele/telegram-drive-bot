@@ -82,7 +82,12 @@ func (s *UserService) RemoveUser(telegramID int64, operatorRole constants.Role) 
 }
 
 // PromoteUser promotes a user to admin role.
-func (s *UserService) PromoteUser(userID uint) (string, error) {
+// operatorRole 是发起操作的用户角色,用于深度防御:即使 handler 中间件被绕过,
+// 这里仍会拒绝非 admin/owner 的操作者
+func (s *UserService) PromoteUser(userID uint, operatorRole constants.Role) (string, error) {
+	if !operatorRole.IsAdminOrOwner() {
+		return "forbidden", nil
+	}
 	user, err := s.repo.GetByID(userID)
 	if err != nil {
 		return "", err

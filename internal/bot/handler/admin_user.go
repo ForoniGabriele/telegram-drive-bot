@@ -165,12 +165,17 @@ func (h *AdminUserHandler) OnUserDeleteCallback(c tele.Context) error {
 
 // OnUserPromoteCallback handles user promotion to admin.
 func (h *AdminUserHandler) OnUserPromoteCallback(c tele.Context) error {
+	operator, ok := RequireUser(c)
+	if !ok {
+		return nil
+	}
+
 	data, err := ui.Decode(c.Callback().Data)
 	if err != nil || data.UserID == 0 {
 		return nil
 	}
 
-	status, err := h.userService.PromoteUser(data.UserID)
+	status, err := h.userService.PromoteUser(data.UserID, constants.Role(operator.Role))
 	if err != nil {
 		slog.Error("promote user failed", "error", err, "user_id", data.UserID)
 		return c.RespondText(msg.PromoteFailed)

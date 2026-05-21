@@ -175,20 +175,21 @@ func New(cfg *config.Config, userService *service.UserService, fileService *serv
 	admins.Handle("/listuser", adminHandler.OnListUser)
 
 	// Admin callback handlers
+	// 不走 AdminOnly 中间件的话,普通白名单用户构造请求即可触发管理员操作(权限提升 / 信息泄露)
 	btnUserList := tele.InlineButton{Unique: ui.CBUserList.String()}
-	b.Handle(&btnUserList, adminHandler.OnUserListCallback)
+	admins.Handle(&btnUserList, adminHandler.OnUserListCallback)
 
 	btnUserInfo := tele.InlineButton{Unique: ui.CBUserInfo.String()}
-	b.Handle(&btnUserInfo, adminHandler.OnUserInfoCallback)
+	admins.Handle(&btnUserInfo, adminHandler.OnUserInfoCallback)
 
 	btnUserDel := tele.InlineButton{Unique: ui.CBUserDel.String()}
-	b.Handle(&btnUserDel, adminHandler.OnUserDeleteCallback)
+	admins.Handle(&btnUserDel, adminHandler.OnUserDeleteCallback)
 
 	btnUserPromote := tele.InlineButton{Unique: ui.CBUserPromote.String()}
-	b.Handle(&btnUserPromote, adminHandler.OnUserPromoteCallback)
+	admins.Handle(&btnUserPromote, adminHandler.OnUserPromoteCallback)
 
 	btnUserDemote := tele.InlineButton{Unique: ui.CBUserDemote.String()}
-	b.Handle(&btnUserDemote, adminHandler.OnUserDemoteCallback)
+	admins.Handle(&btnUserDemote, adminHandler.OnUserDemoteCallback)
 
 	// ========== Owner Commands (Group with OwnerOnly middleware) ==========
 	// 这些命令通常是耗时 / 影响范围广的运维操作:批量 embedding、caption 同步等

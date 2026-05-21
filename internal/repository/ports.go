@@ -17,6 +17,7 @@ type UserRepository interface {
 type FileRepository interface {
 	Create(file *model.File) error
 	GetByID(id uint) (*model.File, error)
+	GetByIDAndUser(id, userID uint) (*model.File, error)
 	GetByUniqueIDAndUser(fileUniqueID string, userID uint) (*model.File, error)
 	DeleteByIDAndUser(id, userID uint) (rowsAffected int64, err error)
 	ExistsByUserAndFileUniqueID(userID uint, fileUniqueID string) (bool, error)

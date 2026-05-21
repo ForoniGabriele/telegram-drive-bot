@@ -44,6 +44,22 @@ func (r *FileRepo) GetByID(id uint) (*model.File, error) {
 	return &file, nil
 }
 
+// GetByIDAndUser 按主键查找文件,但要求文件归属 userID
+// 用于来自 callback_data 的 fileID 取文件 -- callback_data 可被客户端伪造,
+// 不能信任,必须在 SQL 层用 user_id 限定避免越权读取他人文件
+// 不存在或不属于 userID 时统一返回 (nil, nil)
+func (r *FileRepo) GetByIDAndUser(id, userID uint) (*model.File, error) {
+	var file model.File
+	err := r.db.Where("id = ? AND user_id = ?", id, userID).First(&file).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &file, nil
+}
+
 // GetByUniqueIDAndUser Telegram 的 file_unique_id 和 user id查找文件
 func (r *FileRepo) GetByUniqueIDAndUser(fileUniqueID string, userID uint) (*model.File, error) {
 	var file model.File
@@ -85,7 +101,9 @@ func (r *FileRepo) ListByUser(userID uint, fileType string, page, pageSize int) 
 	}
 
 	var total int64
-	db.Model(&model.File{}).Count(&total)
+	if err := db.Model(&model.File{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 
 	var files []model.File
 	err := db.Order("created_at DESC").
@@ -184,7 +202,9 @@ func (r *FileRepo) Search(userID uint, query string, fileType string, page, page
 	}
 
 	var total int64
-	db.Model(&model.File{}).Count(&total)
+	if err := db.Model(&model.File{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 
 	var files []model.File
 	err := db.
@@ -207,7 +227,9 @@ func (r *FileRepo) SearchFallback(userID uint, query string, fileType string, pa
 	}
 
 	var total int64
-	db.Model(&model.File{}).Count(&total)
+	if err := db.Model(&model.File{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 
 	var files []model.File
 	err := db.Order("created_at DESC").
@@ -279,7 +301,9 @@ func (r *FileRepo) VectorSearch(userID uint, queryVec []float64, fileType string
 	}
 
 	var total int64
-	db.Model(&model.File{}).Count(&total)
+	if err := db.Model(&model.File{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 
 	var files []model.File
 	err = db.

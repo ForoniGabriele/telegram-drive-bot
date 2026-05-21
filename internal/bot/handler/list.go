@@ -67,13 +67,18 @@ func (h *ListHandler) OnListCallback(c tele.Context) error {
 
 // OnFileCallback handles file retrieval callbacks.
 func (h *ListHandler) OnFileCallback(c tele.Context) error {
+	user, ok := RequireUser(c)
+	if !ok {
+		return nil
+	}
 	data, err := ui.Decode(c.Callback().Data)
 	if err != nil || data.FileDBID == 0 {
 		return nil
 	}
 	fileID := data.FileDBID
 
-	file, err := h.fileService.GetFileByID(fileID)
+	// 必须用 user.ID 限定:callback_data 来自客户端,可被构造任意 fileID 越权访问他人文件
+	file, err := h.fileService.GetFileByIDAndUser(fileID, user.ID)
 	if err != nil || file == nil {
 		return c.RespondText(msg.FileNotFound)
 	}

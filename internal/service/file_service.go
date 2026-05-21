@@ -283,9 +283,19 @@ func (s *FileService) searchKeywordOnly(userID uint, query, fileType string, pag
 	return files, total, err
 }
 
-// GetFileByID returns a file by its internal ID.
+// GetFileByID returns a file by its internal ID without an ownership check.
+// 仅供服务内部 / 系统路径使用(例如批量任务、维护命令)
+// 来自用户的 fileID(尤其是 callback_data 中的 fileID)必须改用 GetFileByIDAndUser,
+// 否则白名单用户可枚举主键越权下载他人文件
 func (s *FileService) GetFileByID(id uint) (*model.File, error) {
 	return s.repos.File.GetByID(id)
+}
+
+// GetFileByIDAndUser 按主键取文件并校验归属
+// 不存在或不属于该 userID 时统一返回 (nil, nil) -- 调用方据此回 "文件不存在",
+// 避免泄露 "存在但不属于你" 的信息
+func (s *FileService) GetFileByIDAndUser(id, userID uint) (*model.File, error) {
+	return s.repos.File.GetByIDAndUser(id, userID)
 }
 
 // GetFileByUniqueIDAndUser returns a file by its Telegram file_unique_id, scoped to userID.

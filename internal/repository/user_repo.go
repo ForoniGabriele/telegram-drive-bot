@@ -71,7 +71,9 @@ func (r *UserRepo) ListAll(page, pageSize int) ([]model.User, int64, error) {
 	var users []model.User
 	var total int64
 
-	r.db.Model(&model.User{}).Count(&total)
+	if err := r.db.Model(&model.User{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 
 	err := r.db.Order("created_at ASC").
 		Offset((page - 1) * pageSize).
