@@ -3,7 +3,6 @@ package repository
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math/rand/v2"
 	"time"
 
@@ -281,7 +280,7 @@ func (r *FileRepo) GetTotalStatsByUser(userID uint) (*TotalStats, error) {
 
 // VectorSearch 使用 pgvector 的余弦距离运算符 (<=>) 执行语义搜索
 // 仅考虑 embedding 非空 (non-NULL) 的文件。结果按余弦距离升序排序
-// (即最相似的排在最前面)。如果 threshold > 0，则排除距离大于该阈值的结果
+// (即最相似的排在最前面)。如果 threshold > 0,则排除距离大于该阈值的结果
 func (r *FileRepo) VectorSearch(userID uint, queryVec []float64, fileType string, threshold float64, page, pageSize int) ([]model.File, int64, error) {
 	vecJSON, err := json.Marshal(queryVec)
 	if err != nil {
@@ -295,12 +294,8 @@ func (r *FileRepo) VectorSearch(userID uint, queryVec []float64, fileType string
 		db = db.Where("file_type = ?", fileType)
 	}
 
-	// Use fmt.Sprintf for the ORDER BY expression because gorm.Expr does not reliably
-	// render inside Order(). vecStr is a json.Marshal'd float64 array — no injection risk.
-	orderExpr := fmt.Sprintf("embedding <=> '%s'::extensions.halfvec", vecStr)
-
 	if threshold > 0 {
-		db = db.Where(fmt.Sprintf("embedding <=> '%s'::extensions.halfvec <= %f", vecStr, threshold))
+		db = db.Where("embedding <=> ?::extensions.halfvec <= ?", vecStr, threshold)
 	}
 
 	var total int64
@@ -310,7 +305,7 @@ func (r *FileRepo) VectorSearch(userID uint, queryVec []float64, fileType string
 
 	var files []model.File
 	err = db.
-		Order(orderExpr).
+		Order(gorm.Expr("embedding <=> ?::extensions.halfvec", vecStr)).
 		Order("id DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).

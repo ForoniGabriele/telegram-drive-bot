@@ -94,26 +94,14 @@ func (h *StartHandler) sendFileByUniqueID(c tele.Context, fileUniqueID string, u
 		slog.Error("load file copies failed", "error", err, "file_db_id", file.ID)
 	}
 
-	sent, err := h.storage.SendFileToUser(c.Bot(), c.Chat(), file, copies, caption)
+	sent, err := storage.SendWithFallback(c.Bot(), h.storage, c.Chat(), file, copies, caption)
 	if err == nil {
 		attachDeleteButton(c.Bot(), sent, file.ID)
 		return nil
 	}
-
-	// Fall back to direct file_id send when all channel copies fail.
-	if errors.Is(err, storage.ErrAllCopiesFailed) {
-		slog.Warn("all storage copies failed, falling back to direct send (deep link)", "file_db_id", file.ID)
-		if sendable := storage.BuildSendable(file, caption); sendable != nil {
-			if fallback, sendErr := c.Bot().Send(c.Chat(), sendable); sendErr == nil {
-				attachDeleteButton(c.Bot(), fallback, file.ID)
-				return nil
-			} else {
-				slog.Error("direct-send fallback failed (deep link)", "error", sendErr, "file_db_id", file.ID)
-			}
-		}
+	if errors.Is(err, storage.ErrFileUnsendable) {
 		return c.Send(msg.FileUnavailable)
 	}
-
 	slog.Error("send file to user failed (deep link)", "error", err, "file_db_id", file.ID)
 	return c.Send(msg.FileSendFailed)
 }

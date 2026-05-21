@@ -109,7 +109,7 @@ func (h *RandomHandler) handle(c tele.Context, cmdName string, fileTypes []strin
 	return nil
 }
 
-// 使用配置的存储服务发送单个随机文件，其采用与 /list 的文件单文件获取回调相同的“直接发送降级模式（direct-send fallback）”
+// 使用配置的存储服务发送单个随机文件，其采用与 /list 的文件单文件获取回调相同的"直接发送降级模式（direct-send fallback）"
 // 发送失败只记录日志，而不会中断批量任务, 用户仍会收到那些发送成功的文件
 func (h *RandomHandler) sendOne(c tele.Context, file *model.File) {
 	copies, err := h.fileService.GetFileCopies(file)
@@ -119,26 +119,15 @@ func (h *RandomHandler) sendOne(c tele.Context, file *model.File) {
 
 	caption := buildRandomCaption(file)
 
-	sent, err := h.storage.SendFileToUser(c.Bot(), c.Chat(), file, copies, caption)
+	sent, err := storage.SendWithFallback(c.Bot(), h.storage, c.Chat(), file, copies, caption)
 	if err == nil {
 		attachDeleteButton(c.Bot(), sent, file.ID)
 		return
 	}
-
-	if errors.Is(err, storage.ErrAllCopiesFailed) {
-		slog.Warn("all storage copies failed for random file, falling back to direct send", "file_db_id", file.ID)
-		if sendable := storage.BuildSendable(file, caption); sendable != nil {
-			if fallback, sendErr := c.Bot().Send(c.Chat(), sendable); sendErr == nil {
-				attachDeleteButton(c.Bot(), fallback, file.ID)
-				return
-			} else {
-				slog.Error("direct-send fallback failed for random file", "error", sendErr, "file_db_id", file.ID)
-			}
-		}
-		return
+	if !errors.Is(err, storage.ErrFileUnsendable) {
+		slog.Error("send random file failed", "error", err, "file_db_id", file.ID)
 	}
-
-	slog.Error("send random file failed", "error", err, "file_db_id", file.ID)
+	// ErrFileUnsendable 已由 SendWithFallback 内部 log 过, 不再重复
 }
 
 // buildRandomCaption 用于构建附加在 /rand 回复中的简短caption

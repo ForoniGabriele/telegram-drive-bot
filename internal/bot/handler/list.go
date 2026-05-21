@@ -90,26 +90,14 @@ func (h *ListHandler) OnFileCallback(c tele.Context) error {
 		slog.Error("load file copies failed", "error", err, "file_db_id", file.ID)
 	}
 
-	sent, err := h.storage.SendFileToUser(c.Bot(), c.Chat(), file, copies, caption)
+	sent, err := storage.SendWithFallback(c.Bot(), h.storage, c.Chat(), file, copies, caption)
 	if err == nil {
 		attachDeleteButton(c.Bot(), sent, file.ID)
 		return c.Respond()
 	}
-
-	// All channel copies failed — fall back to a direct file_id send so the user still gets the file.
-	if errors.Is(err, storage.ErrAllCopiesFailed) {
-		slog.Warn("all storage copies failed, falling back to direct send", "file_db_id", file.ID)
-		if sendable := storage.BuildSendable(file, caption); sendable != nil {
-			if fallback, sendErr := c.Bot().Send(c.Chat(), sendable); sendErr == nil {
-				attachDeleteButton(c.Bot(), fallback, file.ID)
-				return c.Respond()
-			} else {
-				slog.Error("direct-send fallback failed", "error", sendErr, "file_db_id", file.ID)
-			}
-		}
+	if errors.Is(err, storage.ErrFileUnsendable) {
 		return c.Send(msg.FileUnavailable)
 	}
-
 	slog.Error("send file to user failed", "error", err, "file_db_id", file.ID)
 	return c.Send(msg.FileSendFailed)
 }

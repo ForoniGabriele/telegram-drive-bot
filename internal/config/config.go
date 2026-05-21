@@ -327,6 +327,11 @@ func loadEmbeddingConfig() (EmbeddingConfig, error) {
 	if err != nil {
 		return EmbeddingConfig{}, err
 	}
+	// pgvector 余弦距离取值范围 [0, 2]:0 完全一致, 1 正交, 2 完全反向
+	// 越界值会让 VectorSearch 始终返回空或始终返回全部, 用户无从察觉, 在配置阶段就拒绝
+	if threshold < 0 || threshold > 2 {
+		return EmbeddingConfig{}, fmt.Errorf("EMBEDDING_THRESHOLD must be in [0, 2], got %v", threshold)
+	}
 
 	return EmbeddingConfig{
 		Enabled:    true,

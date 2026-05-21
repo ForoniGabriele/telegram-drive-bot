@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf16"
+
+	"tg-drive-bot/internal/constants"
 )
 
 // FormatFileSize formats bytes into human-readable size string.
@@ -30,20 +32,20 @@ func FormatFileSize(bytes int64) string {
 
 // FileTypeIcon returns the emoji icon for a file type.
 func FileTypeIcon(fileType string) string {
-	switch fileType {
-	case "document":
+	switch constants.FileType(fileType) {
+	case constants.FileTypeDocument:
 		return "📄"
-	case "audio":
+	case constants.FileTypeAudio:
 		return "🎵"
-	case "video":
+	case constants.FileTypeVideo:
 		return "🎬"
-	case "photo":
+	case constants.FileTypePhoto:
 		return "🖼"
-	case "animation":
+	case constants.FileTypeAnimation:
 		return "🎞"
-	case "voice":
+	case constants.FileTypeVoice:
 		return "🎤"
-	case "video_note":
+	case constants.FileTypeVideoNote:
 		return "⏺"
 	default:
 		return "📎"
@@ -52,20 +54,20 @@ func FileTypeIcon(fileType string) string {
 
 // FileTypeName returns the Chinese display name for a file type.
 func FileTypeName(fileType string) string {
-	switch fileType {
-	case "document":
+	switch constants.FileType(fileType) {
+	case constants.FileTypeDocument:
 		return "文档"
-	case "audio":
+	case constants.FileTypeAudio:
 		return "音频"
-	case "video":
+	case constants.FileTypeVideo:
 		return "视频"
-	case "photo":
+	case constants.FileTypePhoto:
 		return "图片"
-	case "animation":
+	case constants.FileTypeAnimation:
 		return "动图"
-	case "voice":
+	case constants.FileTypeVoice:
 		return "语音"
-	case "video_note":
+	case constants.FileTypeVideoNote:
 		return "视频笔记"
 	default:
 		return "未知"
@@ -75,8 +77,13 @@ func FileTypeName(fileType string) string {
 // AllFileTypes returns all supported file type keys in display order.
 func AllFileTypes() []string {
 	return []string{
-		"document", "audio", "video", "photo",
-		"animation", "voice", "video_note",
+		constants.FileTypeDocument.String(),
+		constants.FileTypeAudio.String(),
+		constants.FileTypeVideo.String(),
+		constants.FileTypePhoto.String(),
+		constants.FileTypeAnimation.String(),
+		constants.FileTypeVoice.String(),
+		constants.FileTypeVideoNote.String(),
 	}
 }
 
