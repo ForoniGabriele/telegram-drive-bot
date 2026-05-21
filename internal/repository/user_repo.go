@@ -75,7 +75,7 @@ func (r *UserRepo) ListAll(page, pageSize int) ([]model.User, int64, error) {
 		return nil, 0, err
 	}
 
-	err := r.db.Order("created_at ASC").
+	err := r.db.Order("created_at ASC, id ASC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&users).Error

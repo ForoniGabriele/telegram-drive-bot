@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"tg-drive-bot/internal/model"
@@ -60,6 +61,10 @@ const asyncConcurrency = 5
 //
 // 该服务从不直接接触 *gorm.DB —— 所有的事务作用域控制都通过
 // uow.WithTx 进行，从而使持久层实现保持可替换性
+//
+// asyncWG 跟踪所有由 SaveFile / DeleteFile 派生的后台 goroutine,
+// 用于实现优雅停机 -- 进程退出前调用 Shutdown 等待半截事务跑完,
+// 避免出现 DB 已写 files 行但 file_copies 转发未完成的孤儿数据
 type FileService struct {
 	repos        *repository.Repos
 	uow          repository.UnitOfWork
@@ -67,6 +72,7 @@ type FileService struct {
 	asyncForward bool              // forward to storage channels in background goroutine
 	asyncDelete  bool              // delete from storage channels in background goroutine
 	asyncSem     chan struct{}     // limits concurrent async channel operations; nil when both flags are false
+	asyncWG      sync.WaitGroup    // tracks async goroutines for graceful shutdown
 }
 
 // 创建一个新的 FileService
@@ -142,6 +148,7 @@ func (s *FileService) SaveFile(userID uint, info *FileInfo, msgInfo *MessageInfo
 		if txErr != nil {
 			return nil, txErr
 		}
+		s.asyncWG.Add(1)
 		go s.asyncForwardCopies(file.ID, bot, originalMsg, store)
 	} else {
 		// Sync path: forward first, then write file + copies together.
@@ -382,6 +389,7 @@ func (s *FileService) DeleteFile(userID uint, fileID uint, bot tele.API, store s
 
 	// DB is committed. Storage cleanup is best-effort.
 	if s.asyncDelete {
+		s.asyncWG.Add(1)
 		go s.asyncDeleteCopies(file.ID, bot, store, copies)
 	} else {
 		if err := store.DeleteFromStorage(bot, copies); err != nil {
@@ -397,6 +405,7 @@ func (s *FileService) DeleteFile(userID uint, fileID uint, bot tele.API, store s
 // 并持久化生成的副本位置记录。发生错误时仅记录日志而不会向上传播
 // 因为文件记录已保存在数据库中，可以通过直接的 file_id 降级获取。
 func (s *FileService) asyncForwardCopies(fileID uint, bot tele.API, originalMsg *tele.Message, store storage.Storage) {
+	defer s.asyncWG.Done()
 	s.asyncSem <- struct{}{}
 	defer func() { <-s.asyncSem }()
 
@@ -429,6 +438,7 @@ func (s *FileService) asyncForwardCopies(fileID uint, bot tele.API, originalMsg 
 // 在后台goroutine中运行，用于删除频道副本消息
 // 发生错误时仅记录日志而不会向上传播——因为数据库记录已经删除了
 func (s *FileService) asyncDeleteCopies(fileID uint, bot tele.API, store storage.Storage, copies []model.CopyLocation) {
+	defer s.asyncWG.Done()
 	s.asyncSem <- struct{}{}
 	defer func() { <-s.asyncSem }()
 
@@ -443,3 +453,21 @@ func (s *FileService) asyncDeleteCopies(fileID uint, bot tele.API, store storage
 // Re-export repository types for use by handler layer.
 type FileTypeStats = repository.FileTypeStats
 type TotalStats = repository.TotalStats
+
+// Shutdown 阻塞等待所有正在跑的异步 forward/delete goroutine 完成
+// ctx 超时后立即返回(不强杀 goroutine, 只放弃等待) -- main 用一个 30s 超时套住,
+// 避免极端情况下卡死进程退出
+// 调用时机:b.Stop() 完成 (Telegram poller 已停, 不会再产生新请求) 之后, closeDB 之前
+func (s *FileService) Shutdown(ctx context.Context) {
+	done := make(chan struct{})
+	go func() {
+		s.asyncWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		slog.Info("file service: all async operations drained")
+	case <-ctx.Done():
+		slog.Warn("file service: shutdown timeout, some async operations may be incomplete", "error", ctx.Err())
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"time"
 
 	"tg-drive-bot/internal/model"
 
@@ -106,7 +107,7 @@ func (r *FileRepo) ListByUser(userID uint, fileType string, page, pageSize int) 
 	}
 
 	var files []model.File
-	err := db.Order("created_at DESC").
+	err := db.Order("created_at DESC, id DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&files).Error
@@ -209,6 +210,7 @@ func (r *FileRepo) Search(userID uint, query string, fileType string, page, page
 	var files []model.File
 	err := db.
 		Order(gorm.Expr("ts_rank(search_vector, plainto_tsquery('simple', ?)) DESC", query)).
+		Order("id DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&files).Error
@@ -232,7 +234,7 @@ func (r *FileRepo) SearchFallback(userID uint, query string, fileType string, pa
 	}
 
 	var files []model.File
-	err := db.Order("created_at DESC").
+	err := db.Order("created_at DESC, id DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&files).Error
@@ -259,18 +261,19 @@ func (r *FileRepo) GetStatsByUser(userID uint) ([]FileTypeStats, error) {
 }
 
 // TotalStats holds aggregate stats (total count, total size, earliest, latest).
+// Earliest/Latest 为 nil 表示该用户没有任何文件
 type TotalStats struct {
 	TotalCount int64
 	TotalSize  int64
-	Earliest   *string
-	Latest     *string
+	Earliest   *time.Time
+	Latest     *time.Time
 }
 
 // GetTotalStatsByUser returns aggregate stats for a user.
 func (r *FileRepo) GetTotalStatsByUser(userID uint) (*TotalStats, error) {
 	var stats TotalStats
 	err := r.db.Model(&model.File{}).
-		Select("COUNT(*) as total_count, COALESCE(SUM(file_size), 0) as total_size, MIN(created_at)::text as earliest, MAX(created_at)::text as latest").
+		Select("COUNT(*) as total_count, COALESCE(SUM(file_size), 0) as total_size, MIN(created_at) as earliest, MAX(created_at) as latest").
 		Where("user_id = ?", userID).
 		Scan(&stats).Error
 	return &stats, err
@@ -308,6 +311,7 @@ func (r *FileRepo) VectorSearch(userID uint, queryVec []float64, fileType string
 	var files []model.File
 	err = db.
 		Order(orderExpr).
+		Order("id DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&files).Error
@@ -334,4 +338,36 @@ func (r *FileRepo) ListAllFileIDs() ([]uint, error) {
 		Order("id").
 		Pluck("id", &ids).Error
 	return ids, err
+}
+
+// EmbeddingSource 是生成 embedding 所需的文本字段子集
+// 不包含数据库主键以外的字段, 调用方按 fileID 配对结果
+type EmbeddingSource struct {
+	FileName string
+	Title    string
+	Caption  string
+}
+
+// GetEmbeddingSource 读取生成 embedding 所需的文本字段
+// 找不到时返回 (nil, nil), 调用方据此跳过该 fileID
+func (r *FileRepo) GetEmbeddingSource(fileID uint) (*EmbeddingSource, error) {
+	var src EmbeddingSource
+	err := r.db.Table("files").
+		Select("file_name, title, caption").
+		Where("id = ?", fileID).
+		Scan(&src).Error
+	if err != nil {
+		return nil, err
+	}
+	return &src, nil
+}
+
+// SaveEmbedding 将一个 fileID 的 embedding 向量写回 files 表
+// vecJSON 必须是 json.Marshal 得到的 float64 数组字面量(例如 "[0.1,0.2,...]"),
+// 由 service 层产出 -- 这里只负责强类型转换为 pgvector 的 halfvec
+func (r *FileRepo) SaveEmbedding(fileID uint, vecJSON string) error {
+	return r.db.Exec(
+		"UPDATE files SET embedding = ?::extensions.halfvec WHERE id = ?",
+		vecJSON, fileID,
+	).Error
 }

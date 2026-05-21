@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -62,7 +63,7 @@ func run() int {
 	uow := repository.NewGormUnitOfWork(db)
 
 	// 各种服务
-	embeddingSvc := service.NewEmbeddingService(cfg.Embedding, db, repos.File)
+	embeddingSvc := service.NewEmbeddingService(cfg.Embedding, repos.File)
 	userService := service.NewUserService(repos.User)
 	fileService := service.NewFileService(repos, uow, embeddingSvc, cfg.Storage.AsyncForward, cfg.Storage.AsyncDelete)
 	maintenanceSvc := service.NewMaintenanceService(repos.Maintenance)
@@ -84,7 +85,7 @@ func run() int {
 		return 1
 	}
 
-	return serve(b, embeddingSvc, maintenanceSvc, cfg.Maintenance.CapSyncInterval)
+	return serve(b, fileService, embeddingSvc, maintenanceSvc, cfg.Maintenance.CapSyncInterval)
 }
 
 // 使用config里的配置连接db
@@ -187,17 +188,34 @@ func newStorage(cfg *config.Config) storage.Storage {
 }
 
 // 用goroutine来启动bot, 防止b.Start()阻塞主进程, 手动处理各种信号
-func serve(b *tele.Bot, embeddingSvc *service.EmbeddingService, maintenanceSvc *service.MaintenanceService, capSyncInterval time.Duration) int {
+//
+// 退出顺序(保证数据完整性):
+//  1. SIGINT/SIGTERM -> ctx.Done -> 通知 embedding/maintenance worker 与 RunBatch 退出
+//  2. b.Stop() 停掉 Telegram poller, 不再接收新更新
+//  3. bgWg.Wait 等 worker goroutine 退出
+//  4. fileService.Shutdown(30s) 等异步 forward/delete 跑完(避免孤儿数据)
+//  5. defer closeDB 关连接池
+func serve(b *tele.Bot, fileService *service.FileService, embeddingSvc *service.EmbeddingService, maintenanceSvc *service.MaintenanceService, capSyncInterval time.Duration) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	var bgWg sync.WaitGroup
+
 	// Start embedding worker if vector search is enabled.
 	if embeddingSvc != nil {
-		go embeddingSvc.Start(ctx)
+		bgWg.Add(1)
+		go func() {
+			defer bgWg.Done()
+			embeddingSvc.Start(ctx)
+		}()
 	}
 
 	// 启动定时 cap_sync 任务; interval <= 0 时 Start 自身会立即返回, 这里无需额外判断
-	go maintenanceSvc.Start(ctx, capSyncInterval)
+	bgWg.Add(1)
+	go func() {
+		defer bgWg.Done()
+		maintenanceSvc.Start(ctx, capSyncInterval)
+	}()
 
 	started := make(chan struct{})
 	done := make(chan struct{})
@@ -209,15 +227,26 @@ func serve(b *tele.Bot, embeddingSvc *service.EmbeddingService, maintenanceSvc *
 	<-started
 	slog.Info("bot started, polling for updates")
 
+	exitCode := 0
 	select {
 	case <-ctx.Done():
 		slog.Info("shutdown signal received, stopping bot")
 		b.Stop()
 		<-done
 		slog.Info("bot stopped cleanly")
-		return 0
 	case <-done:
 		slog.Error("bot polling exited unexpectedly")
-		return 1
+		exitCode = 1
+		stop() // trigger ctx cancel so background workers also wind down
 	}
+
+	// 等后台 worker 退出(Start/RunBatch 都监听同一个 ctx)
+	bgWg.Wait()
+
+	// 等异步 forward/delete 跑完, 避免半截事务造成孤儿数据
+	drainCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	fileService.Shutdown(drainCtx)
+
+	return exitCode
 }

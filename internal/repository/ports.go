@@ -31,6 +31,9 @@ type FileRepository interface {
 	// 全库扫:用于 owner 命令 /emb_re 和 /emb_sync 的批量 embedding 任务
 	ListIDsMissingEmbedding() ([]uint, error)
 	ListAllFileIDs() ([]uint, error)
+	// embedding 读写:供 EmbeddingService 使用,使 service 不再持有 *gorm.DB
+	GetEmbeddingSource(fileID uint) (*EmbeddingSource, error)
+	SaveEmbedding(fileID uint, vecJSON string) error
 }
 
 // FileCopyRepository covers the file_copies multi-copy table.

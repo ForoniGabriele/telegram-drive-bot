@@ -14,8 +14,7 @@ import (
 	"time"
 
 	"tg-drive-bot/internal/config"
-
-	"gorm.io/gorm"
+	"tg-drive-bot/internal/repository"
 )
 
 // EmbeddingService 包含一个后台工作协程，用于异步处理新保存文件的嵌入任务
@@ -25,15 +24,18 @@ import (
 //  2. 调用 Start(ctx) 启动后台工作协程
 //  3. 文件成功保存后调用 Enqueue(fileID) —— 该操作是非阻塞的
 //  4. 在搜索过程中调用 GenerateEmbedding(text) 对查询文本进行向量化
-//  5. 当 context 被取消时，后台工作协程将停止运行
+//  5. 当 Start 传入的 ctx 被取消时，后台工作协程将停止运行;
+//     RunBatch 也会观察同一个 ctx 并尽快退出
 
 type EmbeddingService struct {
 	cfg          config.EmbeddingConfig
-	db           *gorm.DB
 	client       *http.Client
-	queue        chan uint    // buffered channel of file IDs to process (realtime worker)
+	queue        chan uint // buffered channel of file IDs to process (realtime worker)
 	repo         FileRepoForEmbedding
 	batchRunning atomic.Bool // CAS-protected single-instance lock for RunBatch
+	// lifeCtx 在 Start 时记录,供 RunBatch 复用 -- 进程级 SIGTERM 也能 cancel 长跑批量任务
+	// nil 时(Start 未调用)RunBatch 退化为 context.Background()
+	lifeCtx atomic.Pointer[context.Context]
 }
 
 // FileRepoForEmbedding 是 EmbeddingService 需要的 FileRepository 子集
@@ -42,6 +44,8 @@ type EmbeddingService struct {
 type FileRepoForEmbedding interface {
 	ListIDsMissingEmbedding() ([]uint, error)
 	ListAllFileIDs() ([]uint, error)
+	GetEmbeddingSource(fileID uint) (*repository.EmbeddingSource, error)
+	SaveEmbedding(fileID uint, vecJSON string) error
 }
 
 // BatchMode 控制批量任务覆盖的范围
@@ -117,13 +121,12 @@ const (
 
 // NewEmbeddingService creates an EmbeddingService. Returns nil when vector search is disabled,
 // so callers can safely check for nil before using it.
-func NewEmbeddingService(cfg config.EmbeddingConfig, db *gorm.DB, repo FileRepoForEmbedding) *EmbeddingService {
+func NewEmbeddingService(cfg config.EmbeddingConfig, repo FileRepoForEmbedding) *EmbeddingService {
 	if !cfg.Enabled {
 		return nil
 	}
 	return &EmbeddingService{
 		cfg:    cfg,
-		db:     db,
 		client: &http.Client{Timeout: embeddingHTTPTimeout},
 		queue:  make(chan uint, embeddingQueueSize),
 		repo:   repo,
@@ -147,7 +150,10 @@ func (s *EmbeddingService) Threshold() float64 {
 
 // Start launches the background worker that consumes the queue and generates embeddings.
 // It blocks until ctx is cancelled, so call it in a goroutine.
+// 同时把 ctx 存到 lifeCtx 里, RunBatch 会复用 -- 这样进程 SIGTERM 时,
+// 正在跑的 /emb_re 批量也能跟着停, 而不是无视 cancel 一直跑到底
 func (s *EmbeddingService) Start(ctx context.Context) {
+	s.lifeCtx.Store(&ctx)
 	slog.Info("embedding worker started",
 		"api_type", s.cfg.APIType,
 		"model", s.cfg.Model,
@@ -162,7 +168,10 @@ func (s *EmbeddingService) Start(ctx context.Context) {
 		case fileID := <-s.queue:
 			s.processFile(ctx, fileID)
 			// Small delay to avoid hammering the API when many files are enqueued at once.
-			time.Sleep(embeddingWorkerPeriod)
+			if !sleepOrDone(ctx, embeddingWorkerPeriod) {
+				slog.Info("embedding worker stopped")
+				return
+			}
 		}
 	}
 }
@@ -183,15 +192,22 @@ const (
 // RunBatch 用独立 goroutine 跑全量 / 补缺失的 embedding 任务
 // 调用方应在自己的 goroutine 里运行,并消费 progress chan(本方法负责 close)
 // 同一时刻只能有一个 RunBatch 在跑;重复调用立即返回 ErrBatchBusy
-// 使用独立的 context(典型是 context.Background() 或 bot 顶层 ctx)
-// 不要绑定 telebot handler 的 c.Context(),否则 handler return 后任务会被立即 cancel
-func (s *EmbeddingService) RunBatch(ctx context.Context, mode BatchMode, progress chan<- BatchProgress) error {
+//
+// 任务使用 Start 时传入的进程级 lifeCtx, 这样 SIGTERM 也能 cancel 长跑任务,
+// 不再像旧版本那样要求调用方自行管理一个不被 handler return 影响的 ctx
+// 若 Start 未被调用(测试场景), 退化为 context.Background()
+func (s *EmbeddingService) RunBatch(mode BatchMode, progress chan<- BatchProgress) error {
 	if !s.batchRunning.CompareAndSwap(false, true) {
 		close(progress)
 		return ErrBatchBusy
 	}
 	defer s.batchRunning.Store(false)
 	defer close(progress)
+
+	ctx := context.Background()
+	if p := s.lifeCtx.Load(); p != nil {
+		ctx = *p
+	}
 
 	if s.repo == nil {
 		err := fmt.Errorf("embedding batch unavailable: nil repo")
@@ -237,7 +253,12 @@ func (s *EmbeddingService) RunBatch(ctx context.Context, mode BatchMode, progres
 		}
 		s.processFile(ctx, id)
 		// 节流(沿用实时 worker 的间隔,避免对 API 形成爆发流量)
-		time.Sleep(embeddingWorkerPeriod)
+		if !sleepOrDone(ctx, embeddingWorkerPeriod) {
+			err := ctx.Err()
+			slog.Warn("embedding batch cancelled mid-sleep", "done", i + 1, "total", total)
+			progress <- BatchProgress{Done: i + 1, Total: total, Phase: "failed", Err: err}
+			return err
+		}
 
 		done := i + 1
 		if done == total || done%batchProgressEvery == 0 || time.Since(lastSent) >= batchProgressInterval {
@@ -257,22 +278,17 @@ func (s *EmbeddingService) RunBatch(ctx context.Context, mode BatchMode, progres
 
 // processFile reads a file's text content from DB, generates an embedding, and writes it back.
 func (s *EmbeddingService) processFile(ctx context.Context, fileID uint) {
-	// Read file_name and caption from the files table.
-	var result struct {
-		FileName string
-		Title    string
-		Caption  string
-	}
-	err := s.db.Table("files").
-		Select("file_name, title, caption").
-		Where("id = ?", fileID).
-		Scan(&result).Error
+	src, err := s.repo.GetEmbeddingSource(fileID)
 	if err != nil {
 		slog.Error("embedding: failed to read file", "file_db_id", fileID, "error", err)
 		return
 	}
+	if src == nil {
+		slog.Debug("embedding: file vanished before processing", "file_db_id", fileID)
+		return
+	}
 
-	text := buildEmbeddingInput(result.FileName, result.Title, result.Caption)
+	text := buildEmbeddingInput(src.FileName, src.Title, src.Caption)
 	if text == "" {
 		slog.Debug("embedding: skipping file with no text content", "file_db_id", fileID)
 		return
@@ -289,28 +305,40 @@ func (s *EmbeddingService) processFile(ctx context.Context, fileID uint) {
 		}
 		slog.Warn("embedding: API call failed, retrying",
 			"file_db_id", fileID, "attempt", attempt, "error", err)
-		time.Sleep(embeddingRetryDelay)
+		if !sleepOrDone(ctx, embeddingRetryDelay) {
+			return // context cancelled during backoff
+		}
 	}
 	if err != nil {
 		slog.Error("embedding: giving up after retries", "file_db_id", fileID, "error", err)
 		return
 	}
 
-	// Write the embedding back to the files table using raw SQL (pgvector type).
+	// Write the embedding back via the repository (avoids holding a *gorm.DB in the service layer).
 	embJSON, err := json.Marshal(embedding)
 	if err != nil {
 		slog.Error("embedding: failed to marshal vector", "file_db_id", fileID, "error", err)
 		return
 	}
-	if err := s.db.Exec(
-		"UPDATE files SET embedding = ?::extensions.halfvec WHERE id = ?",
-		string(embJSON), fileID,
-	).Error; err != nil {
+	if err := s.repo.SaveEmbedding(fileID, string(embJSON)); err != nil {
 		slog.Error("embedding: failed to save vector", "file_db_id", fileID, "error", err)
 		return
 	}
 
 	slog.Info("embedding: generated", "file_db_id", fileID, "dimensions", len(embedding))
+}
+
+// sleepOrDone 等待 d 时长, 或在 ctx 被取消时立即返回
+// 返回 true 表示正常睡满, false 表示被 ctx cancel 提前唤醒
+func sleepOrDone(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // callEmbeddingAPI dispatches to the correct API implementation based on configured APIType.

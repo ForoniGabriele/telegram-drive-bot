@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -51,19 +50,19 @@ func (h *EmbeddingAdminHandler) start(c tele.Context, mode service.BatchMode, st
 
 	bot := c.Bot()
 	chatID := c.Chat().ID
-	// 使用独立 background context,避免 handler return 后被 cancel
-	// 任务可能耗时数十分钟,远超 telebot handler 的生命周期
-	go h.runAndReportProgress(context.Background(), bot, chatID, sent, mode)
+	// EmbeddingService 内部用 Start 注入的进程级 lifeCtx, 这里不再需要单独传 ctx;
+	// SIGTERM 会同时 cancel realtime worker 和正在跑的 RunBatch
+	go h.runAndReportProgress(bot, chatID, sent, mode)
 
 	return nil
 }
 
 // runAndReportProgress 在后台 goroutine 中跑批量任务,并把进度持续 edit 到 sent 消息
-func (h *EmbeddingAdminHandler) runAndReportProgress(ctx context.Context, bot tele.API, chatID int64, sent *tele.Message, mode service.BatchMode) {
+func (h *EmbeddingAdminHandler) runAndReportProgress(bot tele.API, chatID int64, sent *tele.Message, mode service.BatchMode) {
 	progressCh := make(chan service.BatchProgress, 4)
 
 	go func() {
-		err := h.embSvc.RunBatch(ctx, mode, progressCh)
+		err := h.embSvc.RunBatch(mode, progressCh)
 		// 这里只关心 ErrBatchBusy:RunBatch 已 close(progressCh) 且未投递任何进度
 		// 其他错误已通过 Phase=="failed" 的 progress 投递给消费方
 		if errors.Is(err, service.ErrBatchBusy) {

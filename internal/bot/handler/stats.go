@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"tg-drive-bot/internal/bot/msg"
 	"tg-drive-bot/internal/constants"
@@ -75,15 +74,11 @@ func formatStats(typeStats []service.FileTypeStats, totalStats *service.TotalSta
 	sb.WriteString(fmt.Sprintf("\n📦 总计: %d 个文件\n", totalStats.TotalCount))
 	sb.WriteString(fmt.Sprintf("💾 总大小: %s\n", util.FormatFileSize(totalStats.TotalSize)))
 
-	if totalStats.Earliest != nil && *totalStats.Earliest != "" {
-		if t, err := time.Parse("2006-01-02 15:04:05", (*totalStats.Earliest)[:19]); err == nil {
-			sb.WriteString(fmt.Sprintf("📅 最早存入: %s\n", t.Format(constants.DateDay)))
-		}
+	if totalStats.Earliest != nil {
+		sb.WriteString(fmt.Sprintf("📅 最早存入: %s\n", totalStats.Earliest.Format(constants.DateDay)))
 	}
-	if totalStats.Latest != nil && *totalStats.Latest != "" {
-		if t, err := time.Parse("2006-01-02 15:04:05", (*totalStats.Latest)[:19]); err == nil {
-			sb.WriteString(fmt.Sprintf("📅 最近存入: %s\n", t.Format(constants.DateDay)))
-		}
+	if totalStats.Latest != nil {
+		sb.WriteString(fmt.Sprintf("📅 最近存入: %s\n", totalStats.Latest.Format(constants.DateDay)))
 	}
 
 	return sb.String()
