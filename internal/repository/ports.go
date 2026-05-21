@@ -2,15 +2,6 @@ package repository
 
 import "tg-drive-bot/internal/model"
 
-// This file declares the repository interfaces consumed by the service layer, plus the
-// UnitOfWork abstraction used to run multi-repo work inside a single DB transaction.
-//
-// Every concrete implementation (*UserRepo, *FileRepo, etc.) must satisfy the matching
-// interface. Service code should depend on the interfaces only — never on the concrete
-// struct types — so that (a) unit tests can substitute fakes, and (b) a future swap of the
-// ORM / storage engine only touches the repository package.
-
-// UserRepository covers CRUD + whitelist queries for model.User.
 type UserRepository interface {
 	Create(user *model.User) error
 	GetByTelegramID(telegramID int64) (*model.User, error)
@@ -60,12 +51,6 @@ type MaintenanceRepository interface {
 	CaptionSync() (CapSyncResult, error)
 }
 
-// Repos aggregates every repository interface. An instance represents a single
-// consistency scope: either the root (db-backed, each call runs in its own short tx)
-// or a tx-bound snapshot obtained via UnitOfWork.WithTx.
-//
-// Service code should accept *Repos or a subset rather than individual repos, so that
-// mixed work can move in and out of transactions without changing call sites.
 type Repos struct {
 	User        UserRepository
 	File        FileRepository
@@ -74,15 +59,12 @@ type Repos struct {
 	Maintenance MaintenanceRepository
 }
 
-// UnitOfWork runs a function inside a database transaction, passing a tx-bound *Repos
-// whose repository calls all execute against the same transaction.
+// UnitOfWork 在数据库事务内运行一个函数，并向其传入一个绑定了事务的 *Repos，
+// 该 Repos 下的所有仓储方法调用都将在同一个事务中执行
 //
-// Semantics:
-//   - The passed closure should return nil to commit, non-nil to roll back.
-//   - The returned error is the closure's error (or a tx framework error).
-//   - Nested WithTx calls reuse the outer transaction; they do not start a nested tx.
-//     (This mirrors GORM's default behavior — callers needing true savepoints must
-//     add them explicitly.)
+// 语义：
+//   - 传入的闭包函数如果返回 nil 则提交事务，返回非 nil 则回滚
+//   - 方法返回的 error 为该闭包返回的错误（或者是事务框架底层的错误）
 type UnitOfWork interface {
 	WithTx(fn func(repos *Repos) error) error
 }

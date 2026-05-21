@@ -18,12 +18,12 @@ jobs:
         include:
           - goos: linux
             goarch: amd64
-            output: tg-drive-bot
-            key: tg_drive_bot/linux_amd64/tg-drive-bot
+            output: telegram-drive-bot
+            key: tg_drive_bot/linux_amd64/telegram-drive-bot
           - goos: windows
             goarch: amd64
-            output: tg-drive-bot.exe
-            key: tg_drive_bot/windows_amd64/tg-drive-bot.exe
+            output: telegram-drive-bot.exe
+            key: tg_drive_bot/windows_amd64/telegram-drive-bot.exe
 
     steps:
       - name: Checkout

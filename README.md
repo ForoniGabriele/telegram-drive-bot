@@ -1,4 +1,4 @@
-# TG Drive Bot
+# Telegram Drive Bot
 
 **简体中文** | [English](doc/README_EN.md)
 
@@ -100,8 +100,8 @@
 
 ```bash
 # 1. 拉取仓库或仅下载 docker-compose.yml + .env.example
-git clone https://github.com/Merack/tg-drive-bot.git
-cd tg-drive-bot
+git clone https://github.com/Merack/telegram-drive-bot.git
+cd telegram-drive-bot
 
 # 2. 复制并填写环境变量
 cp .env.example .env
@@ -115,18 +115,18 @@ docker compose up -d
 docker compose logs -f bot
 ```
 
-镜像默认从 `ghcr.io/merack/tg-drive-bot:latest` 拉取. 如需使用 Docker Hub 镜像或本地源码构建, 可按 `docker-compose.yml` 注释切换. 
+镜像默认从 `ghcr.io/merack/telegram-drive-bot:latest` 拉取. 如需使用 Docker Hub 镜像或本地源码构建, 可按 `docker-compose.yml` 注释切换. 
 
 启用 `channel` 存储模式时, 需要先创建一个或多个 Telegram 频道/超级群组, 并把 Bot 加为管理员(具备发消息与删除消息权限), 再把对应 `chat_id`(以 `-100` 开头)填入 `STORAGE_CHAT_IDS`. 
 
 ### 方式二:预编译二进制
 
-从 [Releases](https://github.com/Merack/tg-drive-bot/releases) 下载对应平台的 `tar.gz`, 解压后:
+从 [Releases](https://github.com/Merack/telegram-drive-bot/releases) 下载对应平台的 `tar.gz`, 解压后:
 
 ```bash
 cp .env.example .env
 # 编辑 .env 填好必填项
-./tg-drive-bot
+./telegram-drive-bot
 ```
 
 ### 方式三:从源码编译
@@ -134,12 +134,12 @@ cp .env.example .env
 需要 Go 1.26+. 
 
 ```bash
-git clone https://github.com/Merack/tg-drive-bot.git
-cd tg-drive-bot
-go build -trimpath -ldflags="-s -w" -o tg-drive-bot ./cmd/bot
+git clone https://github.com/Merack/telegram-drive-bot.git
+cd telegram-drive-bot
+go build -trimpath -ldflags="-s -w" -o telegram-drive-bot ./cmd/bot
 cp .env.example .env
 # 编辑 .env
-./tg-drive-bot
+./telegram-drive-bot
 ```
 
 ### systemd 守护(可选)

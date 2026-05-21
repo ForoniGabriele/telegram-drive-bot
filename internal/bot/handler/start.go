@@ -29,7 +29,7 @@ func NewStartHandler(fileService *service.FileService, store storage.Storage) *S
 
 // 用于处理 /start 指令
 // 当携带格式为 "file_<FileUniqueID>" 的deep-link载荷被调用时，它会获取并
-// 将该文件投递给发起请求的用户 —— 但“仅当”该文件属于该用户自己时才会进行投递
+// 将该文件投递给发起请求的用户, 但仅当该文件属于该用户自己时才会进行投递
 // 如果未携带载荷，则回落并发送欢迎消息
 func (h *StartHandler) OnStart(c tele.Context) error {
 	payload := strings.TrimSpace(c.Message().Payload)
@@ -73,9 +73,8 @@ func buildWelcome(role constants.Role) string {
 }
 
 // 从数据库获取文件并且将其投递到用户的聊天窗口
-// 所有权校验是在数据库查询级别强制执行的：
-// GetFileByUniqueIDAndUser 仅在 file_unique_id 和 user_id 同时匹配时才会返回记录，
-// 这样，用户就绝对无法通过共享的深层链接（deep link）获取到其他用户的文件
+// 仅在 file_unique_id 和 user_id 同时匹配时才会返回记录，
+// 防止deep link泄露获取到其他用户的文件
 func (h *StartHandler) sendFileByUniqueID(c tele.Context, fileUniqueID string, userID uint) error {
 	file, err := h.fileService.GetFileByUniqueIDAndUser(fileUniqueID, userID)
 	if err != nil {

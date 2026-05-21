@@ -28,7 +28,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -trimpath \
         -buildvcs=false \
         -ldflags="-s -w -buildid=" \
-        -o /out/tg-drive-bot \
+        -o /out/telegram-drive-bot \
         ./cmd/bot
 
 # ============================================================
@@ -47,13 +47,13 @@ RUN apk add --no-cache ca-certificates tzdata \
 WORKDIR /app
 
 # 仅复制二进制 + 示例配置,避免源码进入运行镜像
-COPY --from=builder /out/tg-drive-bot /app/tg-drive-bot
+COPY --from=builder /out/telegram-drive-bot /app/telegram-drive-bot
 COPY --chown=app:app .env.example /app/.env.example
 
-# 运行时数据目录, 目前没有东西要放到data里, 先写了为以后其他留着(比如日志之类的)
+# 运行时数据目录, 目前没有东西要放到data里, 先写了为以后其他功能留着(比如日志之类的)
 RUN mkdir -p /app/data && chown -R app:app /app
 
 USER app
 
 # 应用使用 long polling,无需暴露端口
-ENTRYPOINT ["/app/tg-drive-bot"]
+ENTRYPOINT ["/app/telegram-drive-bot"]

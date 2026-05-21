@@ -11,9 +11,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// randomSamplingThreshold is the row-count cutoff above which RandomByUserAndTypes
-// switches from a simple ORDER BY RANDOM() to primary-key based sampling. Below it
-// the simple approach is fast enough and trivially correct.
+// randomSamplingThreshold 是一个行数（记录数）的阈值
+// 在此阈值以下，RandomByUserAndTypes 会使用简单的 ORDER BY RANDOM()以提高性能
+// 当数量超过此阈值时，RandomByUserAndTypes 会切换为基于主键的采样方式
 const randomSamplingThreshold = 500
 
 // FileRepo is the GORM-backed implementation of FileRepository.
@@ -44,9 +44,7 @@ func (r *FileRepo) GetByID(id uint) (*model.File, error) {
 	return &file, nil
 }
 
-// GetByUniqueIDAndUser finds a file by Telegram file_unique_id scoped to a specific user.
-// Returns nil, nil if not found — callers treat that as "not owned / not exists".
-// Uses the composite unique index (user_id, file_unique_id) for an index-only lookup.
+// GetByUniqueIDAndUser Telegram 的 file_unique_id 和 user id查找文件
 func (r *FileRepo) GetByUniqueIDAndUser(fileUniqueID string, userID uint) (*model.File, error) {
 	var file model.File
 	err := r.db.
@@ -102,7 +100,7 @@ func (r *FileRepo) ListByUser(userID uint, fileType string, page, pageSize int) 
 // 如果符合条件的文件池大小小于 limit，则返回更少的数据行（或空切片）
 //
 // 算法：对于小型文件池（数量 <= randomSamplingThreshold），它会降级使用
-// ORDER BY RANDOM() LIMIT n —— 在这种规模下，这显然足够均匀，且执行速度足够快
+// ORDER BY RANDOM() LIMIT n 以提高查询速度
 // 对于较大的文件池，它会在 [min_id, max_id] 区间内对主键进行随机抽样，并通过
 // "WHERE id >= ? ORDER BY id LIMIT 1" 将每个候选值映射到最邻近的实际数据行，
 // 这样可以兼容由于删除操作导致的 ID 不连续（空洞）

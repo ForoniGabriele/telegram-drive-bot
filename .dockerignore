@@ -33,6 +33,7 @@ docker-compose.*.yml
 LICENSE
 README*.md
 docs/
+doc/
 
 # 其它
 skills-lock.json

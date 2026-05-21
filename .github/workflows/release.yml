@@ -53,7 +53,7 @@ jobs:
             -trimpath \
             -buildvcs=false \
             -ldflags="-s -w -buildid=" \
-            -o "dist/tg-drive-bot${ext}" \
+            -o "dist/telegram-drive-bot${ext}" \
             ./cmd/bot
 
       - name: Package tar.gz
@@ -64,9 +64,9 @@ jobs:
         run: |
           ext=""
           if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
-          pkg_name="tg-drive-bot_${GITHUB_REF_NAME}_${GOOS}_${GOARCH}"
+          pkg_name="telegram-drive-bot_${GITHUB_REF_NAME}_${GOOS}_${GOARCH}"
           mkdir -p "pkg/${pkg_name}"
-          cp "dist/tg-drive-bot${ext}" "pkg/${pkg_name}/"
+          cp "dist/telegram-drive-bot${ext}" "pkg/${pkg_name}/"
           cp .env.example "pkg/${pkg_name}/"
           tar -C pkg -czf "${pkg_name}.tar.gz" "${pkg_name}"
           echo "pkg_name=${pkg_name}" >> "$GITHUB_OUTPUT"

@@ -269,9 +269,9 @@ func isMessageGoneErr(err error) bool {
 // copyMessageWithCaption 通过 Bot API 的 copyMessage 端点复制一条消息,并允许覆盖 caption
 // telebot.v4 的 Bot.Copy 没有暴露 caption 参数,这里直接走 Raw 构造请求
 // caption 以纯文本形式发送(不传 parse_mode),避免原始 caption 中的特殊字符被误判为 Markdown/HTML
-// 截断由调用方在 buildXxxCaption 阶段完成 -- 这里不再处理长度
+// 截断由调用方在 buildXxxCaption 阶段完成, 这里不再处理长度
 //
-// 注意: Raw 内部已经处理了 API 错误 -- 当返回 err == nil 时, data 一定包含一个有效的 result 字段
+// Raw 内部已经处理了 API 错误, 当返回 err == nil 时, data 一定包含一个有效的 result 字段
 func copyMessageWithCaption(bot tele.API, to *tele.Chat, from *tele.Message, caption string) (*tele.Message, error) {
 	params := map[string]string{
 		"chat_id":      strconv.FormatInt(to.ID, 10),

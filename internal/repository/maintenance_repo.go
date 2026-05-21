@@ -23,8 +23,8 @@ type CapSyncResult struct {
 
 // CaptionSync 为同属一个 media_group_id 的文件/消息回填 caption
 //
-// 背景:Telegram album 会拆成多条独立消息推给 bot,但通常**只有第一条带 caption**
-// 其余文件入库后 caption 字段为空。该方法用一次性 SQL 完成回填:
+// Telegram album 会拆成多条独立消息推给 bot,但通常只有第一条带 caption
+// 导致其余文件入库后 caption 字段为空。该方法用一次性 SQL 完成回填:
 //  1. 临时表 _cap_src 从 messages 收集 (media_group_id, caption)
 //     同组多 caption 时取 received_at 最早 + id 最小的一条(对应"第一条")
 //  2. 用临时表回填 files.caption(只更新 caption 为空的行)
@@ -35,7 +35,7 @@ type CapSyncResult struct {
 func (r *MaintenanceRepo) CaptionSync() (CapSyncResult, error) {
 	var result CapSyncResult
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		// 1) 临时表(ON COMMIT DROP 配合 tx 结束自动清理)
+		// 临时表(ON COMMIT DROP 配合 tx 结束自动清理)
 		if err := tx.Exec(`
 			CREATE TEMP TABLE _cap_src ON COMMIT DROP AS
 			SELECT DISTINCT ON (m.media_group_id) m.media_group_id, m.caption
@@ -49,7 +49,7 @@ func (r *MaintenanceRepo) CaptionSync() (CapSyncResult, error) {
 			return err
 		}
 
-		// 2) 回填 files
+		// 回填 files
 		res := tx.Exec(`
 			UPDATE files f
 			SET caption = src.caption
@@ -63,7 +63,7 @@ func (r *MaintenanceRepo) CaptionSync() (CapSyncResult, error) {
 		}
 		result.FilesUpdated = res.RowsAffected
 
-		// 3) 回填 messages 同组其他空 caption 行
+		// 回填 messages 同组其他空 caption 行
 		res = tx.Exec(`
 			UPDATE messages m
 			SET caption = src.caption

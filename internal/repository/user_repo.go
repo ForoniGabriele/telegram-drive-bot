@@ -8,9 +8,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// UserRepo is the GORM-backed implementation of UserRepository.
-// All methods run against r.db, which is either the root *gorm.DB or a tx-bound handle
-// produced by UnitOfWork.WithTx.
+// 所有方法都对 r.db 进行操作，r.db 可以是顶层的 *gorm.DB 实例，
+// 也可以是通过 UnitOfWork.WithTx 生成的、绑定了事务的句柄
 type UserRepo struct {
 	db *gorm.DB
 }

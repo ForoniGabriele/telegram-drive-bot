@@ -91,8 +91,7 @@ func TruncateString(s string, maxLen int) string {
 
 // CompactLines 将多行字符串扁平化为单行：空白行（或仅包含空格的行）会被丢弃，
 // 剩余的行将用两个空格拼接
-// 用于列表（list）/ 搜索（search）/ 随机（random）视图中的精简标题预览，
-// 在这些视图中，原始的换行符只会增加干扰（噪点）而没有实际的有效信息
+// 用于列表（list）/ 搜索（search）/ 随机（random）视图中的精简标题预览
 func CompactLines(s string) string {
 	lines := strings.Split(s, "\n")
 	kept := lines[:0]

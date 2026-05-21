@@ -136,7 +136,7 @@ func closeDB(db *gorm.DB) {
 
 // 数据库表的初始化
 //
-// 执行顺序很关键:
+// 执行顺序:
 //  1. PreMigrate    -- 列改名/删除(AutoMigrate 不会做这两件事;且对 NOT NULL 列改名必须先行)
 //  2. AutoMigrate   -- 创建/调整表结构以匹配 GORM 模型
 //  3. InitializeSchema -- generated 列、GIN 索引、pgvector

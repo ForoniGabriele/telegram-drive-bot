@@ -109,13 +109,8 @@ func (h *RandomHandler) handle(c tele.Context, cmdName string, fileTypes []strin
 	return nil
 }
 
-// 使用配置的存储服务发送单个随机文件，其采用与 /list 的文件回调相同的
-// “直接发送降级模式（direct-send fallback）”。发送失败只记录日志，而不会中断批量任务 ——
-// 用户仍会收到那些发送成功的文件。
-//
-// 消息会附带一段简短的说明（文件名 + 截断后的原注释）。在直接发送（Direct）模式下，
-// 它会伴随媒体文件一同发送；在频道（Channel）模式下，copyMessage 会保留文件原本的
-// 原始注释并忽略这篇简短说明(用`raw` API 替换copyMessage API 可以使两种模式的表现一致, 后面有时间再做)
+// 使用配置的存储服务发送单个随机文件，其采用与 /list 的文件单文件获取回调相同的“直接发送降级模式（direct-send fallback）”
+// 发送失败只记录日志，而不会中断批量任务, 用户仍会收到那些发送成功的文件
 func (h *RandomHandler) sendOne(c tele.Context, file *model.File) {
 	copies, err := h.fileService.GetFileCopies(file)
 	if err != nil {

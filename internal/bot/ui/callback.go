@@ -1,5 +1,5 @@
-// Package ui encapsulates Telegram UI concerns: callback data encoding,
-// keyboard construction, and paginated list rendering.
+// Package ui 封装了 Telegram UI 相关的处理：callback data编码、
+// 键盘构建以及分页列表的渲染
 package ui
 
 import (
@@ -32,8 +32,7 @@ func (k CBKind) String() string { return string(k) }
 // ErrCBMalformed signals callback data that cannot be decoded.
 var ErrCBMalformed = errors.New("malformed callback data")
 
-// CBData holds the decoded payload carried in InlineButton.Data.
-// Fields are optional; producers set only what they need, consumers read what they expect.
+// CBData 保存了从 InlineButton.Data 携带的解码后的playload数据, 所有字段均为可选
 type CBData struct {
 	FileType   string // "all", "document", ... used by list/search
 	Page       int    // pagination target
@@ -43,8 +42,8 @@ type CBData struct {
 	CacheKey   string // search-context cache key
 }
 
-// Encode serializes CBData into the "k=v|k=v" format. Empty fields are omitted.
-// Always fits within telebot's 64-byte callback_data budget for realistic inputs.
+// Encode 将 CBData 序列化为 "k=v|k=v" 格式，空字段会被省略
+// 在实际输入情况下，能确保始终控制在 Telegram 64 字节的 callback_data 长度限制内
 func Encode(d CBData) string {
 	var parts []string
 	if d.FileType != "" {
@@ -68,8 +67,8 @@ func Encode(d CBData) string {
 	return strings.Join(parts, "|")
 }
 
-// Decode parses "k=v|k=v" into CBData. An empty string yields a zero-value CBData and no error,
-// so consumers can treat both "absent" and "present but empty" identically.
+// Decode 将 "k=v|k=v" 解析为 CBData. 空字符串会直接返回零值的 CBData 且不返回错误，
+// 这样接收方可以将“不存在”和“存在但为空”这两种情况等同看待
 func Decode(s string) (CBData, error) {
 	var d CBData
 	if s == "" {

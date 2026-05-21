@@ -12,7 +12,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-// MaintenanceAdminHandler 处理 owner 级别的运维命令(目前只有 /cap_sync)
+// MaintenanceAdminHandler 处理 owner 级别的运维命令
 // 与 EmbeddingAdminHandler 不同,cap_sync 是纯 SQL 任务,执行时间通常 < 1 秒,
 // 不需要后台 goroutine + 进度回调,handler 内同步执行后回 1 条完成消息
 type MaintenanceAdminHandler struct {

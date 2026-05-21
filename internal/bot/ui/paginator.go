@@ -12,9 +12,9 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
-// FormatFileLine renders a single "<N>. <icon> <name> (<size>) - <date>" line as HTML.
-// The filename is wrapped in a deep-link anchor pointing to t.me/<botUsername>?start=file_<ID>.
-// Shared by list and search views (identical rendering by design).
+// FormatFileLine 将单行 "<序号>. <图标> <文件名> (<文件大小>) - <创建日期>" 渲染为 HTML
+// 文件名会被包裹在一个deep link中，该deep link指向 t.me/<botUsername>?start=file_<ID>
+// 该方法由列表视图和搜索视图共享
 func FormatFileLine(index int, f *model.File, botUsername string) string {
 	icon := util.FileTypeIcon(f.FileType)
 	date := f.CreatedAt.Format(constants.DateShort)
@@ -34,9 +34,9 @@ func FormatFileLine(index int, f *model.File, botUsername string) string {
 	return line
 }
 
-// FormatFileList assembles the list body for a page of files.
-// `header` is the already-formatted title line (e.g. "📁 我的文件库 (共 12 个文件)\n\n").
-// `botUsername` is used to generate deep-link anchors for each filename.
+// FormatFileList 组装一页文件的列表主体内容
+// `header` 是已格式化好的标题行（例如 "📁 我的文件库 (共 12 个文件)\n\n"）
+// `botUsername` 用于为每个文件名生成对应的 deep-link 锚点链接
 func FormatFileList(header string, files []model.File, page, pageSize int, botUsername string) string {
 	if len(files) == 0 {
 		return header
@@ -50,9 +50,9 @@ func FormatFileList(header string, files []model.File, page, pageSize int, botUs
 	return sb.String()
 }
 
-// FileTypeFilterRow returns the "文档/音频/视频/图片/全部" row.
-// `cbKind` is the InlineButton.Unique used for each button; `dataFor(ft)` produces the
-// encoded data payload for a given file type.
+// FileTypeFilterRow 返回由“文档/音频/视频/图片/全部”按钮组成的按钮行
+// `cbKind` 是应用于每个按钮的 InlineButton.Unique 标识；
+// `dataFor(ft)` 用于为给定的文件类型生成编码后的data payload
 func FileTypeFilterRow(markup *tele.ReplyMarkup, cbKind CBKind, dataFor func(ft constants.FileType) string) tele.Row {
 	kind := cbKind.String()
 	return markup.Row(
@@ -64,9 +64,9 @@ func FileTypeFilterRow(markup *tele.ReplyMarkup, cbKind CBKind, dataFor func(ft 
 	)
 }
 
-// PaginationRow returns the "◀ 上一页 / 第X/Y页 / 下一页 ▶" row.
-// `dataFor(page)` produces the encoded data for a specific target page.
-// `prev`/`next` buttons are omitted if out of bounds.
+// PaginationRow 返回 "◀ 上一页 / 第X/Y页 / 下一页 ▶" 分页按钮行
+// `dataFor(page)` 用于为特定的目标页码生成编码后的数据
+// 如果超出边界（即没有前一页或后一页），将自动省略“上一页”或“下一页”按钮
 func PaginationRow(markup *tele.ReplyMarkup, cbKind CBKind, pag *util.Pagination, dataFor func(page int) string) tele.Row {
 	kind := cbKind.String()
 	var btns []tele.Btn
@@ -80,8 +80,8 @@ func PaginationRow(markup *tele.ReplyMarkup, cbKind CBKind, pag *util.Pagination
 	return markup.Row(btns...)
 }
 
-// FileNumberButtons packs file-index buttons into rows of 5.
-// Each button's data is the encoded CBData containing FileDBID.
+// FileNumberButtons 将文件序号按钮进行打包排列，每行最多展示 5 个
+// 每个按钮所绑定的数据为经过编码的、包含 FileDBID 的 CBData
 func FileNumberButtons(markup *tele.ReplyMarkup, files []model.File, page, pageSize int) []tele.Row {
 	if len(files) == 0 {
 		return nil
