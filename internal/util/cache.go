@@ -8,9 +8,10 @@ import (
 )
 
 // SearchContext stores the search parameters for a callback.
+// FileType 不在此处保存:它由每个按钮的 callback_data 单独承载,
+// 类型切换/翻页都从 CBData.FileType 读取,缓存层无需冗余存一份。
 type SearchContext struct {
 	Query      string
-	FileType   string
 	UserID     uint
 	SkipVector bool // /ss 命令置 true,翻页时跳过向量搜索层,只走 FTS+ILIKE
 	ExpireAt   time.Time

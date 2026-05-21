@@ -115,7 +115,6 @@ func (h *SearchHandler) sendSearchPage(c tele.Context, userID uint, query, fileT
 
 	cacheKey := h.cache.Set(&util.SearchContext{
 		Query:      query,
-		FileType:   fileType,
 		UserID:     userID,
 		SkipVector: skipVector,
 	})
