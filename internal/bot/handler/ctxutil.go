@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"tg-drive-bot/internal/bot/msg"
 	"tg-drive-bot/internal/model"
 
 	tele "gopkg.in/telebot.v4"
@@ -14,4 +15,20 @@ func RequireUser(c tele.Context) (*model.User, bool) {
 		return nil, false
 	}
 	return user, true
+}
+
+// context里读i18n目录,fallback到zh
+func Cat(c tele.Context) *msg.Catalog {
+	if cat, ok := c.Get("catalog").(*msg.Catalog); ok && cat != nil {
+		return cat
+	}
+	return msg.For(msg.LangZh)
+}
+
+// context里读语言设置,fallback到zh
+func Lang(c tele.Context) string {
+	if s, ok := c.Get("lang").(string); ok && s != "" {
+		return s
+	}
+	return msg.LangZh
 }

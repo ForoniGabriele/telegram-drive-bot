@@ -109,9 +109,11 @@ func New(cfg *config.Config, userService *service.UserService, fileService *serv
 	telegraphHandler := handler.NewTelegraphHandler(tphClient, fileService, store)
 	embAdminHandler := handler.NewEmbeddingAdminHandler(embeddingSvc)
 	maintAdminHandler := handler.NewMaintenanceAdminHandler(maintenanceSvc)
+	langHandler := handler.NewLangHandler(userService)
 
 	// ========== Global Middleware ==========
 	b.Use(middleware.Whitelist(userService))
+	b.Use(middleware.I18n())
 
 	// ========== User Commands ==========
 	b.Handle("/start", startHandler.OnStart)
@@ -123,6 +125,7 @@ func New(cfg *config.Config, userService *service.UserService, fileService *serv
 	b.Handle("/randv", randomHandler.OnRandVideo)
 	b.Handle("/randp", randomHandler.OnRandPhoto)
 	b.Handle("/tph", telegraphHandler.OnTelegraph)
+	b.Handle("/lang", langHandler.OnLang)
 
 	// ========== Media Events ==========
 	mediaEvents := []string{
@@ -199,5 +202,50 @@ func New(cfg *config.Config, userService *service.UserService, fileService *serv
 	owners.Handle("/emb_sync", embAdminHandler.OnEmbSync)
 	owners.Handle("/cap_sync", maintAdminHandler.OnCapSync)
 
+	// 注册菜单
+	if err := registerCommandMenus(b); err != nil {
+		slog.Warn("set command menus failed", "error", err)
+	}
+
 	return b, nil
+}
+
+// 只注册普通用户菜单
+func registerCommandMenus(b *tele.Bot) error {
+	zh := []tele.Command{
+		{Text: "start", Description: "开始 / 通过 deep link 获取文件"},
+		{Text: "list", Description: "浏览我的文件库"},
+		{Text: "search", Description: "搜索文件 (向量+FTS+模糊)"},
+		{Text: "ss", Description: "精确搜索 (跳过向量层)"},
+		{Text: "stats", Description: "查看统计信息"},
+		{Text: "rand", Description: "随机返回媒体"},
+		{Text: "randv", Description: "随机返回视频"},
+		{Text: "randp", Description: "随机返回图片"},
+		{Text: "tph", Description: "抓取 telegra.ph 文章"},
+		{Text: "lang", Description: "查看或切换语言"},
+	}
+	en := []tele.Command{
+		{Text: "start", Description: "Start / fetch a file via deep link"},
+		{Text: "list", Description: "Browse my library"},
+		{Text: "search", Description: "Search files (vector + FTS + fuzzy)"},
+		{Text: "ss", Description: "Exact search (skip vector layer)"},
+		{Text: "stats", Description: "Show statistics"},
+		{Text: "rand", Description: "Random media"},
+		{Text: "randv", Description: "Random videos"},
+		{Text: "randp", Description: "Random photos"},
+		{Text: "tph", Description: "Fetch a telegra.ph article"},
+		{Text: "lang", Description: "View or switch language"},
+	}
+
+	if err := b.SetCommands(zh, "zh"); err != nil {
+		return fmt.Errorf("set zh commands: %w", err)
+	}
+	if err := b.SetCommands(en, "en"); err != nil {
+		return fmt.Errorf("set en commands: %w", err)
+	}
+	// 无法区分语言时的fallback
+	if err := b.SetCommands(en); err != nil {
+		return fmt.Errorf("set default commands: %w", err)
+	}
+	return nil
 }

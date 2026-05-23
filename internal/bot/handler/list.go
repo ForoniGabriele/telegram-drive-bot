@@ -67,6 +67,8 @@ func (h *ListHandler) OnListCallback(c tele.Context) error {
 
 // OnFileCallback handles file retrieval callbacks.
 func (h *ListHandler) OnFileCallback(c tele.Context) error {
+	cat := Cat(c)
+	lang := Lang(c)
 	user, ok := RequireUser(c)
 	if !ok {
 		return nil
@@ -80,10 +82,10 @@ func (h *ListHandler) OnFileCallback(c tele.Context) error {
 	// 必须用 user.ID 限定:callback_data 来自客户端,可被构造任意 fileID 越权访问他人文件
 	file, err := h.fileService.GetFileByIDAndUser(fileID, user.ID)
 	if err != nil || file == nil {
-		return c.RespondText(msg.FileNotFound)
+		return c.RespondText(cat.FileNotFound)
 	}
 
-	caption := buildFileCaption(file)
+	caption := buildFileCaption(cat, lang, file)
 
 	copies, err := h.fileService.GetFileCopies(file)
 	if err != nil {
@@ -92,57 +94,58 @@ func (h *ListHandler) OnFileCallback(c tele.Context) error {
 
 	sent, err := storage.SendWithFallback(c.Bot(), h.storage, c.Chat(), file, copies, caption)
 	if err == nil {
-		attachDeleteButton(c.Bot(), sent, file.ID)
+		attachDeleteButton(c.Bot(), cat, sent, file.ID)
 		return c.Respond()
 	}
 	if errors.Is(err, storage.ErrFileUnsendable) {
-		return c.Send(msg.FileUnavailable)
+		return c.Send(cat.FileUnavailable)
 	}
 	slog.Error("send file to user failed", "error", err, "file_db_id", file.ID)
-	return c.Send(msg.FileSendFailed)
+	return c.Send(cat.FileSendFailed)
 }
 
 // sendListPage sends or edits a file list message with pagination and type filter.
 func (h *ListHandler) sendListPage(c tele.Context, userID uint, fileType string, page int, isEdit bool) error {
+	cat := Cat(c)
+	lang := Lang(c)
 	files, total, err := h.fileService.GetFilesByUser(userID, fileType, page, util.DefaultPageSize)
 	if err != nil {
 		slog.Error("list files failed", "error", err, "user_id", userID, "file_type", fileType, "page", page)
-		return c.Send(msg.ListFetchFailed)
+		return c.Send(cat.ListFetchFailed)
 	}
 
 	pag := &util.Pagination{Page: page, PageSize: util.DefaultPageSize, Total: total}
 
-	text := formatListText(files, total, fileType, page, h.botUsername)
-	markup := buildListKeyboard(files, fileType, pag)
+	text := formatListText(cat, lang, files, total, fileType, page, h.botUsername)
+	markup := buildListKeyboard(cat, files, fileType, pag)
 
 	return ui.EditOrSend(c, text, markup, isEdit)
 }
 
 // formatListText composes the list title and body.
-func formatListText(files []model.File, total int64, fileType string, page int, botUsername string) string {
+func formatListText(cat *msg.Catalog, lang string, files []model.File, total int64, fileType string, page int, botUsername string) string {
 	if total == 0 {
 		if fileType != constants.FileTypeAll.String() && fileType != "" {
-			return fmt.Sprintf("📁 我的文件库\n\n没有 %s %s 类型的文件",
-				util.FileTypeIcon(fileType), util.FileTypeName(fileType))
+			return fmt.Sprintf(cat.ListEmptyType, util.FileTypeIcon(fileType), util.FileTypeName(lang, fileType))
 		}
-		return "📁 我的文件库\n\n还没有存储任何文件, 直接发送文件给我即可开始!"
+		return cat.ListEmpty
 	}
-	header := fmt.Sprintf("📁 我的文件库 (共 %d 个文件)\n\n", total)
-	return ui.FormatFileList(header, files, page, util.DefaultPageSize, botUsername)
+	header := fmt.Sprintf(cat.ListHeader, total)
+	return ui.FormatFileList(lang, header, files, page, util.DefaultPageSize, botUsername)
 }
 
 // buildListKeyboard assembles the list inline keyboard: file number row(s) + type filter + pagination.
-func buildListKeyboard(files []model.File, fileType string, pag *util.Pagination) *tele.ReplyMarkup {
+func buildListKeyboard(cat *msg.Catalog, files []model.File, fileType string, pag *util.Pagination) *tele.ReplyMarkup {
 	markup := &tele.ReplyMarkup{}
 	var rows []tele.Row
 
 	rows = append(rows, ui.FileNumberButtons(markup, files, pag.Page, pag.PageSize)...)
 
-	rows = append(rows, ui.FileTypeFilterRow(markup, ui.CBList, func(ft constants.FileType) string {
+	rows = append(rows, ui.FileTypeFilterRow(markup, cat, ui.CBList, func(ft constants.FileType) string {
 		return ui.Encode(ui.CBData{FileType: ft.String(), Page: 1})
 	}))
 
-	rows = append(rows, ui.PaginationRow(markup, ui.CBList, pag, func(p int) string {
+	rows = append(rows, ui.PaginationRow(markup, cat, ui.CBList, pag, func(p int) string {
 		return ui.Encode(ui.CBData{FileType: fileType, Page: p})
 	}))
 
@@ -150,32 +153,35 @@ func buildListKeyboard(files []model.File, fileType string, pag *util.Pagination
 	return markup
 }
 
-// OnFileDelete handles the first tap on "🗑 删除" — swap keyboard to confirm/cancel.
+// OnFileDelete handles the first tap on the delete button — swap keyboard to confirm/cancel.
 func (h *ListHandler) OnFileDelete(c tele.Context) error {
+	cat := Cat(c)
 	data, err := ui.Decode(c.Callback().Data)
 	if err != nil || data.FileDBID == 0 {
 		return c.Respond()
 	}
-	if _, err := c.Bot().EditReplyMarkup(c.Callback().Message, ui.FileDeleteConfirmKeyboard(data.FileDBID)); err != nil {
+	if _, err := c.Bot().EditReplyMarkup(c.Callback().Message, ui.FileDeleteConfirmKeyboard(cat, data.FileDBID)); err != nil {
 		slog.Warn("swap to confirm keyboard failed", "error", err, "file_db_id", data.FileDBID)
 	}
 	return c.Respond()
 }
 
-// OnFileDeleteCancel handles "❌ 取消" — restore the original single-button keyboard.
+// OnFileDeleteCancel handles the cancel button — restore the original single-button keyboard.
 func (h *ListHandler) OnFileDeleteCancel(c tele.Context) error {
+	cat := Cat(c)
 	data, err := ui.Decode(c.Callback().Data)
 	if err != nil || data.FileDBID == 0 {
 		return c.Respond()
 	}
-	if _, err := c.Bot().EditReplyMarkup(c.Callback().Message, ui.FileActionKeyboard(data.FileDBID)); err != nil {
+	if _, err := c.Bot().EditReplyMarkup(c.Callback().Message, ui.FileActionKeyboard(cat, data.FileDBID)); err != nil {
 		slog.Warn("restore delete keyboard failed", "error", err, "file_db_id", data.FileDBID)
 	}
 	return c.Respond()
 }
 
-// OnFileDeleteConfirm handles "✅ 确认删除" — performs the actual deletion through the service layer.
+// OnFileDeleteConfirm handles the confirm button — performs the actual deletion through the service layer.
 func (h *ListHandler) OnFileDeleteConfirm(c tele.Context) error {
+	cat := Cat(c)
 	user, ok := RequireUser(c)
 	if !ok {
 		return c.Respond()
@@ -189,39 +195,36 @@ func (h *ListHandler) OnFileDeleteConfirm(c tele.Context) error {
 	err = h.fileService.DeleteFile(user.ID, fileID, c.Bot(), h.storage)
 	if err != nil {
 		if errors.Is(err, service.ErrFileNotFound) {
-			if _, editErr := c.Bot().EditReplyMarkup(c.Callback().Message, ui.FileActionKeyboard(fileID)); editErr != nil {
+			if _, editErr := c.Bot().EditReplyMarkup(c.Callback().Message, ui.FileActionKeyboard(cat, fileID)); editErr != nil {
 				slog.Warn("restore keyboard after not-found failed", "error", editErr, "file_db_id", fileID)
 			}
-			return c.Respond(&tele.CallbackResponse{Text: msg.FileNotFoundOrNoPerm, ShowAlert: true})
+			return c.Respond(&tele.CallbackResponse{Text: cat.FileNotFoundOrNoPerm, ShowAlert: true})
 		}
 		slog.Error("delete file failed", "error", err, "file_db_id", fileID, "user_id", user.ID)
-		if _, editErr := c.Bot().EditReplyMarkup(c.Callback().Message, ui.FileActionKeyboard(fileID)); editErr != nil {
+		if _, editErr := c.Bot().EditReplyMarkup(c.Callback().Message, ui.FileActionKeyboard(cat, fileID)); editErr != nil {
 			slog.Warn("restore keyboard after failure failed", "error", editErr, "file_db_id", fileID)
 		}
-		return c.Respond(&tele.CallbackResponse{Text: msg.FileDeleteFailed, ShowAlert: true})
+		return c.Respond(&tele.CallbackResponse{Text: cat.FileDeleteFailed, ShowAlert: true})
 	}
 
 	// Clear the keyboard so the message stays but no longer offers the delete action.
 	if _, err := c.Bot().EditReplyMarkup(c.Callback().Message, &tele.ReplyMarkup{}); err != nil {
 		slog.Warn("clear keyboard after delete failed", "error", err, "file_db_id", fileID)
 	}
-	return c.Respond(&tele.CallbackResponse{Text: msg.FileDeleted})
+	return c.Respond(&tele.CallbackResponse{Text: cat.FileDeleted})
 }
 
-func buildFileCaption(file *model.File) string {
+func buildFileCaption(cat *msg.Catalog, lang string, file *model.File) string {
 	icon := util.FileTypeIcon(file.FileType)
 	size := util.FormatFileSize(file.FileSize)
-	typeName := util.FileTypeName(file.FileType)
+	typeName := util.FileTypeName(lang, file.FileType)
 
 	fileName := file.FileName
 	if fileName == "" {
 		fileName = typeName
 	}
 
-	header := fmt.Sprintf(
-		"📋 文件信息\n━━━━━━━━━━━━━━━\n%s 文件名: %s\n📦 大小: %s\n📅 存入时间: %s\n━━━━━━━━━━━━━━━",
-		icon, fileName, size, file.CreatedAt.Format(constants.DateFull),
-	)
+	header := fmt.Sprintf(cat.FileCaptionHeader, icon, fileName, size, file.CreatedAt.Format(constants.DateFull))
 
 	if file.Caption == "" {
 		return util.TruncateCaption(header, constants.CaptionMaxUTF16)

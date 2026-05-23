@@ -28,6 +28,8 @@ func NewMediaHandler(fileService *service.FileService, store storage.Storage) *M
 
 // OnMediaReceived is the unified handler for all media types.
 func (h *MediaHandler) OnMediaReceived(c tele.Context) error {
+	cat := Cat(c)
+	lang := Lang(c)
 	msgIn := c.Message()
 	user, ok := RequireUser(c)
 	if !ok {
@@ -47,10 +49,10 @@ func (h *MediaHandler) OnMediaReceived(c tele.Context) error {
 	isDup, err := h.fileService.CheckDuplicate(user.ID, fileInfo.FileUniqueID)
 	if err != nil {
 		slog.Error("duplicate check failed", "error", err, "user_id", user.ID, "file_unique_id", fileInfo.FileUniqueID)
-		return c.Send(msg.FileSaveFailed)
+		return c.Send(cat.FileSaveFailed)
 	}
 	if isDup {
-		return c.Send(msg.FileAlreadyExists)
+		return c.Send(cat.FileAlreadyExists)
 	}
 
 	msgInfo := &service.MessageInfo{
@@ -66,15 +68,15 @@ func (h *MediaHandler) OnMediaReceived(c tele.Context) error {
 	result, err := h.fileService.SaveFile(user.ID, fileInfo, msgInfo, c.Bot(), msgIn, h.storage)
 	if err != nil {
 		slog.Error("save file failed", "error", err, "user_id", user.ID, "file_unique_id", fileInfo.FileUniqueID)
-		return c.Send(msg.FileSaveFailed)
+		return c.Send(cat.FileSaveFailed)
 	}
 
 	if result.Status == "duplicate" {
-		return c.Send(msg.FileAlreadyExists)
+		return c.Send(cat.FileAlreadyExists)
 	}
 
 	// Send confirmation
-	return c.Send(formatSaveConfirmation(fileInfo))
+	return c.Send(formatSaveConfirmation(cat, lang, fileInfo))
 }
 
 // extractForwardInfo extracts forwarding source information from a message.
@@ -89,13 +91,13 @@ func extractForwardInfo(m *tele.Message) string {
 }
 
 // formatSaveConfirmation formats the confirmation message after saving a file.
-func formatSaveConfirmation(info *service.FileInfo) string {
+func formatSaveConfirmation(cat *msg.Catalog, lang string, info *service.FileInfo) string {
 	icon := util.FileTypeIcon(info.FileType)
-	typeName := util.FileTypeName(info.FileType)
+	typeName := util.FileTypeName(lang, info.FileType)
 	size := util.FormatFileSize(info.FileSize)
 
 	if info.FileName != "" {
-		return fmt.Sprintf("✅ 已保存: %s (%s %s, %s)", info.FileName, icon, typeName, size)
+		return fmt.Sprintf(cat.SavedWithName, info.FileName, icon, typeName, size)
 	}
-	return fmt.Sprintf("✅ 已保存: %s %s (%s)", icon, typeName, size)
+	return fmt.Sprintf(cat.SavedTypeOnly, icon, typeName, size)
 }

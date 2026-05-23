@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 
+	"tg-drive-bot/internal/bot/msg"
 	"tg-drive-bot/internal/constants"
 	"tg-drive-bot/internal/model"
 	"tg-drive-bot/internal/repository"
@@ -156,6 +157,16 @@ func (s *UserService) UpdateUserInfo(user *model.User, username, firstName strin
 	return s.repo.Update(user)
 }
 
+// UpdateLanguage persists a user's preferred language tag (e.g. "zh", "en").
+// Caller is responsible for validating the tag via msg.IsSupported.
+func (s *UserService) UpdateLanguage(user *model.User, lang string) error {
+	if user.Language == lang {
+		return nil
+	}
+	user.Language = lang
+	return s.repo.Update(user)
+}
+
 // GetByID finds a user by internal ID.
 func (s *UserService) GetByID(id uint) (*model.User, error) {
 	return s.repo.GetByID(id)
@@ -166,15 +177,17 @@ func (s *UserService) DeleteByTelegramID(telegramID int64) error {
 	return s.repo.DeleteByTelegramID(telegramID)
 }
 
-// FormatRole returns a display name for a role.
-func FormatRole(role string) string {
+// FormatRole returns a localized display name for a role. "Owner" is left
+// untranslated since it's used as a proper noun in both languages.
+func FormatRole(lang, role string) string {
+	cat := msg.For(lang)
 	switch constants.Role(role) {
 	case constants.RoleOwner:
 		return "Owner"
 	case constants.RoleAdmin:
-		return "管理员"
+		return cat.RoleAdminName
 	default:
-		return "用户"
+		return cat.RoleUserName
 	}
 }
 

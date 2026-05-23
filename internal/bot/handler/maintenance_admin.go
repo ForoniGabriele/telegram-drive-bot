@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"tg-drive-bot/internal/bot/msg"
 	"tg-drive-bot/internal/service"
 
 	tele "gopkg.in/telebot.v4"
@@ -26,17 +25,18 @@ func NewMaintenanceAdminHandler(maintSvc *service.MaintenanceService) *Maintenan
 
 // OnCapSync 处理 /cap_sync:为同 media_group 的文件/消息回填空 caption
 func (h *MaintenanceAdminHandler) OnCapSync(c tele.Context) error {
-	if err := c.Send(msg.CapSyncStarted); err != nil {
+	cat := Cat(c)
+	if err := c.Send(cat.CapSyncStarted); err != nil {
 		slog.Warn("cap_sync: send start notice failed", "error", err)
 	}
 
 	result, err := h.maintSvc.RunCaptionSync(context.Background())
 	if err != nil {
 		if errors.Is(err, service.ErrCapSyncBusy) {
-			return c.Send(msg.CapSyncBusy)
+			return c.Send(cat.CapSyncBusy)
 		}
-		return c.Send(fmt.Sprintf(msg.CapSyncFailed, err))
+		return c.Send(fmt.Sprintf(cat.CapSyncFailed, err))
 	}
 
-	return c.Send(fmt.Sprintf(msg.CapSyncDone, result.FilesUpdated, result.MessagesUpdated))
+	return c.Send(fmt.Sprintf(cat.CapSyncDone, result.FilesUpdated, result.MessagesUpdated))
 }

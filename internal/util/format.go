@@ -5,13 +5,14 @@ import (
 	"strings"
 	"unicode/utf16"
 
+	"tg-drive-bot/internal/bot/msg"
 	"tg-drive-bot/internal/constants"
 )
 
-// FormatFileSize formats bytes into human-readable size string.
+// 容量大小格式化为人类阅读友好的格式
 func FormatFileSize(bytes int64) string {
 	if bytes <= 0 {
-		return "未知"
+		return "?"
 	}
 	const (
 		KB = 1024
@@ -30,7 +31,8 @@ func FormatFileSize(bytes int64) string {
 	}
 }
 
-// FileTypeIcon returns the emoji icon for a file type.
+// FileTypeIcon returns the emoji icon for a file type. Emojis are universal,
+// no language parameter needed.
 func FileTypeIcon(fileType string) string {
 	switch constants.FileType(fileType) {
 	case constants.FileTypeDocument:
@@ -52,25 +54,27 @@ func FileTypeIcon(fileType string) string {
 	}
 }
 
-// FileTypeName returns the Chinese display name for a file type.
-func FileTypeName(fileType string) string {
+// FileTypeName returns the localized display name for a file type. Callers
+// typically grab `lang` from handler.Lang(c) at the call site.
+func FileTypeName(lang, fileType string) string {
+	cat := msg.For(lang)
 	switch constants.FileType(fileType) {
 	case constants.FileTypeDocument:
-		return "文档"
+		return cat.FileTypeDocument
 	case constants.FileTypeAudio:
-		return "音频"
+		return cat.FileTypeAudio
 	case constants.FileTypeVideo:
-		return "视频"
+		return cat.FileTypeVideo
 	case constants.FileTypePhoto:
-		return "图片"
+		return cat.FileTypePhoto
 	case constants.FileTypeAnimation:
-		return "动图"
+		return cat.FileTypeAnimation
 	case constants.FileTypeVoice:
-		return "语音"
+		return cat.FileTypeVoice
 	case constants.FileTypeVideoNote:
-		return "视频笔记"
+		return cat.FileTypeVideoNote
 	default:
-		return "未知"
+		return cat.FileTypeUnknown
 	}
 }
 

@@ -9,6 +9,7 @@ type User struct {
 	Username   string `gorm:"size:255"`
 	FirstName  string `gorm:"size:255"`
 	Role       string `gorm:"size:20;not null;default:'user'"`
+	Language   string `gorm:"size:10;not null;default:''"`
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	Files      []File `gorm:"foreignKey:UserID"`

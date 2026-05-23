@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"tg-drive-bot/internal/bot/msg"
 	"tg-drive-bot/internal/constants"
 	"tg-drive-bot/internal/model"
 	"tg-drive-bot/internal/service"
@@ -75,6 +74,7 @@ func (h *RandomHandler) OnRandPhoto(c tele.Context) error {
 
 // handle is the shared flow: parse count, query random files, send each in turn.
 func (h *RandomHandler) handle(c tele.Context, cmdName string, fileTypes []string) error {
+	cat := Cat(c)
 	user, ok := RequireUser(c)
 	if !ok {
 		return nil
@@ -82,20 +82,20 @@ func (h *RandomHandler) handle(c tele.Context, cmdName string, fileTypes []strin
 
 	count, err := parseRandCount(c.Message().Payload)
 	if err != nil {
-		return c.Send(fmt.Sprintf(msg.RandInvalidNumber, cmdName, randMaxCount))
+		return c.Send(fmt.Sprintf(cat.RandInvalidNumber, cmdName, randMaxCount))
 	}
 
 	files, err := h.fileService.GetRandomFiles(user.ID, fileTypes, count)
 	if err != nil {
 		slog.Error("get random files failed", "error", err, "user_id", user.ID, "types", fileTypes, "count", count)
-		return c.Send(msg.RandFetchFailed)
+		return c.Send(cat.RandFetchFailed)
 	}
 	if len(files) == 0 {
-		return c.Send(msg.RandNoMedia)
+		return c.Send(cat.RandNoMedia)
 	}
 
 	if len(files) < count {
-		if err := c.Send(fmt.Sprintf(msg.RandPartial, len(files))); err != nil {
+		if err := c.Send(fmt.Sprintf(cat.RandPartial, len(files))); err != nil {
 			slog.Warn("send partial notice failed", "error", err, "user_id", user.ID)
 		}
 	}
@@ -112,6 +112,7 @@ func (h *RandomHandler) handle(c tele.Context, cmdName string, fileTypes []strin
 // 使用配置的存储服务发送单个随机文件，其采用与 /list 的文件单文件获取回调相同的"直接发送降级模式（direct-send fallback）"
 // 发送失败只记录日志，而不会中断批量任务, 用户仍会收到那些发送成功的文件
 func (h *RandomHandler) sendOne(c tele.Context, file *model.File) {
+	cat := Cat(c)
 	copies, err := h.fileService.GetFileCopies(file)
 	if err != nil {
 		slog.Error("load file copies failed", "error", err, "file_db_id", file.ID)
@@ -121,7 +122,7 @@ func (h *RandomHandler) sendOne(c tele.Context, file *model.File) {
 
 	sent, err := storage.SendWithFallback(c.Bot(), h.storage, c.Chat(), file, copies, caption)
 	if err == nil {
-		attachDeleteButton(c.Bot(), sent, file.ID)
+		attachDeleteButton(c.Bot(), cat, sent, file.ID)
 		return
 	}
 	if !errors.Is(err, storage.ErrFileUnsendable) {

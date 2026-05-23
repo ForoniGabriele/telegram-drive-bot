@@ -25,6 +25,8 @@ func NewStatsHandler(fileService *service.FileService) *StatsHandler {
 
 // OnStats handles the /stats command.
 func (h *StatsHandler) OnStats(c tele.Context) error {
+	cat := Cat(c)
+	lang := Lang(c)
 	user, ok := RequireUser(c)
 	if !ok {
 		return nil
@@ -34,23 +36,25 @@ func (h *StatsHandler) OnStats(c tele.Context) error {
 	typeStats, err := h.fileService.GetStats(user.ID)
 	if err != nil {
 		slog.Error("get stats failed", "error", err, "user_id", user.ID)
-		return c.Send(msg.StatsFetchFailed)
+		return c.Send(cat.StatsFetchFailed)
 	}
 
 	// Get total stats
 	totalStats, err := h.fileService.GetTotalStats(user.ID)
 	if err != nil {
 		slog.Error("get total stats failed", "error", err, "user_id", user.ID)
-		return c.Send(msg.StatsFetchFailed)
+		return c.Send(cat.StatsFetchFailed)
 	}
 
-	return c.Send(formatStats(typeStats, totalStats))
+	return c.Send(formatStats(cat, lang, typeStats, totalStats))
 }
 
-// formatStats formats the statistics message.
-func formatStats(typeStats []service.FileTypeStats, totalStats *service.TotalStats) string {
+// formatStats formats the statistics message. The numeric labels around per-type
+// counts and totals are short and language-neutral enough that we keep them
+// inline rather than threading another half-dozen Catalog fields through.
+func formatStats(cat *msg.Catalog, lang string, typeStats []service.FileTypeStats, totalStats *service.TotalStats) string {
 	var sb strings.Builder
-	sb.WriteString("📊 你的文件库统计\n\n")
+	sb.WriteString(cat.StatsBlock)
 
 	// Build a map for quick lookup
 	statsMap := make(map[string]service.FileTypeStats)
@@ -61,24 +65,25 @@ func formatStats(typeStats []service.FileTypeStats, totalStats *service.TotalSta
 	// Display all types in order
 	for _, ft := range util.AllFileTypes() {
 		icon := util.FileTypeIcon(ft)
-		name := util.FileTypeName(ft)
+		name := util.FileTypeName(lang, ft)
 		stat, ok := statsMap[ft]
 		count := int64(0)
 		if ok {
 			count = stat.Count
 		}
-		sb.WriteString(fmt.Sprintf("%s %s: %d 个\n", icon, name, count))
+		sb.WriteString(fmt.Sprintf("%s %s: %d\n", icon, name, count))
 	}
 
-	// Total summary
-	sb.WriteString(fmt.Sprintf("\n📦 总计: %d 个文件\n", totalStats.TotalCount))
-	sb.WriteString(fmt.Sprintf("💾 总大小: %s\n", util.FormatFileSize(totalStats.TotalSize)))
+	// Total summary. "Total" uses the localized type-name "All" placeholder
+	// label only when it adds value; here we just lean on the emoji + a colon.
+	sb.WriteString(fmt.Sprintf("\n📦 %s: %d\n", cat.BtnFilterAll, totalStats.TotalCount))
+	sb.WriteString(fmt.Sprintf("💾 %s\n", util.FormatFileSize(totalStats.TotalSize)))
 
 	if totalStats.Earliest != nil {
-		sb.WriteString(fmt.Sprintf("📅 最早存入: %s\n", totalStats.Earliest.Format(constants.DateDay)))
+		sb.WriteString(fmt.Sprintf("📅 %s\n", totalStats.Earliest.Format(constants.DateDay)))
 	}
 	if totalStats.Latest != nil {
-		sb.WriteString(fmt.Sprintf("📅 最近存入: %s\n", totalStats.Latest.Format(constants.DateDay)))
+		sb.WriteString(fmt.Sprintf("📅 %s\n", totalStats.Latest.Format(constants.DateDay)))
 	}
 
 	return sb.String()

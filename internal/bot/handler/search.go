@@ -48,6 +48,7 @@ func (h *SearchHandler) OnQuickSearch(c tele.Context) error {
 
 // handleSearchCommand 是 /search 和 /ss 共享的入口逻辑,只是是否跳过向量层的开关不同
 func (h *SearchHandler) handleSearchCommand(c tele.Context, skipVector bool) error {
+	cat := Cat(c)
 	user, ok := RequireUser(c)
 	if !ok {
 		return nil
@@ -55,7 +56,7 @@ func (h *SearchHandler) handleSearchCommand(c tele.Context, skipVector bool) err
 
 	query := strings.TrimSpace(c.Message().Payload)
 	if query == "" {
-		return c.Send(msg.SearchEmptyQuery)
+		return c.Send(cat.SearchEmptyQuery)
 	}
 
 	return h.sendSearchPage(c, user.ID, query, constants.FileTypeAll.String(), 1, false, skipVector)
@@ -63,6 +64,7 @@ func (h *SearchHandler) handleSearchCommand(c tele.Context, skipVector bool) err
 
 // OnSearchCallback handles search pagination and type filter callbacks.
 func (h *SearchHandler) OnSearchCallback(c tele.Context) error {
+	cat := Cat(c)
 	user, ok := RequireUser(c)
 	if !ok {
 		return nil
@@ -75,7 +77,7 @@ func (h *SearchHandler) OnSearchCallback(c tele.Context) error {
 
 	ctx := h.cache.Get(data.CacheKey)
 	if ctx == nil {
-		return c.RespondText(msg.SearchExpired)
+		return c.RespondText(cat.SearchExpired)
 	}
 	if ctx.UserID != user.ID {
 		return nil
@@ -96,6 +98,8 @@ func (h *SearchHandler) OnSearchCallback(c tele.Context) error {
 // sendSearchPage sends or edits search results.
 // skipVector=true 时跳过向量层,只走 FTS+ILIKE 降级链
 func (h *SearchHandler) sendSearchPage(c tele.Context, userID uint, query, fileType string, page int, isEdit, skipVector bool) error {
+	cat := Cat(c)
+	lang := Lang(c)
 	var (
 		files []model.File
 		total int64
@@ -108,7 +112,7 @@ func (h *SearchHandler) sendSearchPage(c tele.Context, userID uint, query, fileT
 	}
 	if err != nil {
 		slog.Error("search files failed", "error", err, "user_id", userID, "query", query, "file_type", fileType, "page", page, "skip_vector", skipVector)
-		return c.Send(msg.SearchFailed)
+		return c.Send(cat.SearchFailed)
 	}
 
 	pag := &util.Pagination{Page: page, PageSize: util.DefaultPageSize, Total: total}
@@ -120,33 +124,33 @@ func (h *SearchHandler) sendSearchPage(c tele.Context, userID uint, query, fileT
 	})
 
 	botUsername := h.botUsername
-	text := formatSearchText(files, total, query, page, botUsername)
-	markup := buildSearchKeyboard(files, cacheKey, fileType, pag)
+	text := formatSearchText(cat, lang, files, total, query, page, botUsername)
+	markup := buildSearchKeyboard(cat, files, cacheKey, fileType, pag)
 
 	return ui.EditOrSend(c, text, markup, isEdit)
 }
 
 // formatSearchText composes the search results title and body.
-func formatSearchText(files []model.File, total int64, query string, page int, botUsername string) string {
+func formatSearchText(cat *msg.Catalog, lang string, files []model.File, total int64, query string, page int, botUsername string) string {
 	if total == 0 {
-		return fmt.Sprintf("🔍 搜索 \"%s\" 的结果\n\n未找到匹配的文件", query)
+		return fmt.Sprintf(cat.SearchEmpty, query)
 	}
-	header := fmt.Sprintf("🔍 搜索 \"%s\" 的结果 (共 %d 个)\n\n", query, total)
-	return ui.FormatFileList(header, files, page, util.DefaultPageSize, botUsername)
+	header := fmt.Sprintf(cat.SearchHeader, query, total)
+	return ui.FormatFileList(lang, header, files, page, util.DefaultPageSize, botUsername)
 }
 
 // buildSearchKeyboard assembles the search inline keyboard: file number row(s) + type filter + pagination.
-func buildSearchKeyboard(files []model.File, cacheKey, fileType string, pag *util.Pagination) *tele.ReplyMarkup {
+func buildSearchKeyboard(cat *msg.Catalog, files []model.File, cacheKey, fileType string, pag *util.Pagination) *tele.ReplyMarkup {
 	markup := &tele.ReplyMarkup{}
 	var rows []tele.Row
 
 	rows = append(rows, ui.FileNumberButtons(markup, files, pag.Page, pag.PageSize)...)
 
-	rows = append(rows, ui.FileTypeFilterRow(markup, ui.CBSearch, func(ft constants.FileType) string {
+	rows = append(rows, ui.FileTypeFilterRow(markup, cat, ui.CBSearch, func(ft constants.FileType) string {
 		return ui.Encode(ui.CBData{CacheKey: cacheKey, FileType: ft.String(), Page: 1})
 	}))
 
-	rows = append(rows, ui.PaginationRow(markup, ui.CBSearch, pag, func(p int) string {
+	rows = append(rows, ui.PaginationRow(markup, cat, ui.CBSearch, pag, func(p int) string {
 		return ui.Encode(ui.CBData{CacheKey: cacheKey, FileType: fileType, Page: p})
 	}))
 

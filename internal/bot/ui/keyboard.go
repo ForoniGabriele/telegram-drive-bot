@@ -1,22 +1,25 @@
 package ui
 
 import (
+	"tg-drive-bot/internal/bot/msg"
+
 	tele "gopkg.in/telebot.v4"
 )
 
-// FileActionKeyboard is the initial single-row "🗑 删除" keyboard attached to a freshly sent file message.
-func FileActionKeyboard(fileID uint) *tele.ReplyMarkup {
+// FileActionKeyboard 是附加到刚发送的文件消息上的单行删除键盘
+func FileActionKeyboard(cat *msg.Catalog, fileID uint) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
-	del := m.Data("🗑 删除", CBFileDel.String(), Encode(CBData{FileDBID: fileID}))
+	del := m.Data(cat.BtnDelete, CBFileDel.String(), Encode(CBData{FileDBID: fileID}))
 	m.Inline(m.Row(del))
 	return m
 }
 
-// FileDeleteConfirmKeyboard is the two-button "✅ 确认删除 / ❌ 取消" row after the first delete tap.
-func FileDeleteConfirmKeyboard(fileID uint) *tele.ReplyMarkup {
+// FileDeleteConfirmKeyboard is the confirm/cancel row shown after the first
+// delete tap.
+func FileDeleteConfirmKeyboard(cat *msg.Catalog, fileID uint) *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
-	confirm := m.Data("✅ 确认删除", CBFileDelConfirm.String(), Encode(CBData{FileDBID: fileID}))
-	cancel := m.Data("❌ 取消", CBFileDelCancel.String(), Encode(CBData{FileDBID: fileID}))
+	confirm := m.Data(cat.BtnConfirmDelete, CBFileDelConfirm.String(), Encode(CBData{FileDBID: fileID}))
+	cancel := m.Data(cat.BtnCancel, CBFileDelCancel.String(), Encode(CBData{FileDBID: fileID}))
 	m.Inline(m.Row(confirm, cancel))
 	return m
 }

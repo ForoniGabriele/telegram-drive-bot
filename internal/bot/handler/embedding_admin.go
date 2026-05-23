@@ -29,17 +29,19 @@ func NewEmbeddingAdminHandler(embSvc *service.EmbeddingService) *EmbeddingAdminH
 
 // OnEmbRe 启动全量重做 embedding 任务
 func (h *EmbeddingAdminHandler) OnEmbRe(c tele.Context) error {
-	return h.start(c, service.BatchModeRedo, msg.EmbBatchStartedRe)
+	cat := Cat(c)
+	return h.start(c, cat, service.BatchModeRedo, cat.EmbBatchStartedRe)
 }
 
 // OnEmbSync 启动只补缺失 embedding 的任务
 func (h *EmbeddingAdminHandler) OnEmbSync(c tele.Context) error {
-	return h.start(c, service.BatchModeRefill, msg.EmbBatchStartedSync)
+	cat := Cat(c)
+	return h.start(c, cat, service.BatchModeRefill, cat.EmbBatchStartedSync)
 }
 
-func (h *EmbeddingAdminHandler) start(c tele.Context, mode service.BatchMode, startedText string) error {
+func (h *EmbeddingAdminHandler) start(c tele.Context, cat *msg.Catalog, mode service.BatchMode, startedText string) error {
 	if h.embSvc == nil {
-		return c.Send("❌ 向量搜索未启用, 无法运行 embedding 批量")
+		return c.Send(cat.EmbVectorSearchDisabled)
 	}
 
 	sent, err := c.Bot().Send(c.Chat(), startedText)
@@ -52,13 +54,15 @@ func (h *EmbeddingAdminHandler) start(c tele.Context, mode service.BatchMode, st
 	chatID := c.Chat().ID
 	// EmbeddingService 内部用 Start 注入的进程级 lifeCtx, 这里不再需要单独传 ctx;
 	// SIGTERM 会同时 cancel realtime worker 和正在跑的 RunBatch
-	go h.runAndReportProgress(bot, chatID, sent, mode)
+	go h.runAndReportProgress(bot, cat, chatID, sent, mode)
 
 	return nil
 }
 
 // runAndReportProgress 在后台 goroutine 中跑批量任务,并把进度持续 edit 到 sent 消息
-func (h *EmbeddingAdminHandler) runAndReportProgress(bot tele.API, chatID int64, sent *tele.Message, mode service.BatchMode) {
+// cat 在 handler 主线程中捕获并固定:goroutine 跑到结束时,即使用户切换了语言,
+// 这条任务的状态消息仍保持启动时的语言,避免一条消息中途变语种
+func (h *EmbeddingAdminHandler) runAndReportProgress(bot tele.API, cat *msg.Catalog, chatID int64, sent *tele.Message, mode service.BatchMode) {
 	progressCh := make(chan service.BatchProgress, 4)
 
 	go func() {
@@ -66,7 +70,7 @@ func (h *EmbeddingAdminHandler) runAndReportProgress(bot tele.API, chatID int64,
 		// 这里只关心 ErrBatchBusy:RunBatch 已 close(progressCh) 且未投递任何进度
 		// 其他错误已通过 Phase=="failed" 的 progress 投递给消费方
 		if errors.Is(err, service.ErrBatchBusy) {
-			if _, sErr := bot.Send(&tele.Chat{ID: chatID}, msg.EmbBatchBusy); sErr != nil {
+			if _, sErr := bot.Send(&tele.Chat{ID: chatID}, cat.EmbBatchBusy); sErr != nil {
 				slog.Warn("emb admin: send busy notice failed", "error", sErr)
 			}
 		}
@@ -80,20 +84,20 @@ func (h *EmbeddingAdminHandler) runAndReportProgress(bot tele.API, chatID int64,
 			if p.Total == 0 {
 				continue
 			}
-			text := fmt.Sprintf(msg.EmbBatchProgress, p.Done, p.Total, p.Phase)
+			text := fmt.Sprintf(cat.EmbBatchProgress, p.Done, p.Total, p.Phase)
 			if _, err := bot.Edit(sent, text); err != nil {
 				slog.Debug("emb admin: edit progress failed (likely throttled)", "error", err)
 			}
 		case "done":
-			text := msg.EmbBatchEmpty
+			text := cat.EmbBatchEmpty
 			if p.Total > 0 {
-				text = fmt.Sprintf(msg.EmbBatchDone, p.Total)
+				text = fmt.Sprintf(cat.EmbBatchDone, p.Total)
 			}
 			if _, err := bot.Edit(sent, text); err != nil {
 				slog.Warn("emb admin: edit done failed", "error", err)
 			}
 		case "failed":
-			text := fmt.Sprintf(msg.EmbBatchFailed, p.Err)
+			text := fmt.Sprintf(cat.EmbBatchFailed, p.Err)
 			if _, err := bot.Edit(sent, text); err != nil {
 				slog.Warn("emb admin: edit failed status failed", "error", err)
 			}

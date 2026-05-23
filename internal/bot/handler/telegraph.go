@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 
-	"tg-drive-bot/internal/bot/msg"
 	"tg-drive-bot/internal/constants"
 	"tg-drive-bot/internal/service"
 	"tg-drive-bot/internal/storage"
@@ -42,6 +41,7 @@ func NewTelegraphHandler(client *telegraph.Client, fileService *service.FileServ
 
 // OnTelegraph handles the /tph command.
 func (h *TelegraphHandler) OnTelegraph(c tele.Context) error {
+	cat := Cat(c)
 	user, ok := RequireUser(c)
 	if !ok {
 		return nil
@@ -49,25 +49,25 @@ func (h *TelegraphHandler) OnTelegraph(c tele.Context) error {
 
 	arg := strings.TrimSpace(c.Message().Payload)
 	if arg == "" {
-		return c.Send(msg.TphUsage)
+		return c.Send(cat.TphUsage)
 	}
 
 	path, err := telegraph.ExtractPath(arg)
 	if err != nil {
 		slog.Info("telegraph invalid url", "input", arg, "error", err)
-		return c.Send(msg.TphInvalidURL)
+		return c.Send(cat.TphInvalidURL)
 	}
 
 	// Acknowledge so the user sees progress on slow networks.
-	_ = c.Send(msg.TphFetching)
+	_ = c.Send(cat.TphFetching)
 
 	page, err := h.client.GetPage(context.Background(), path)
 	if err != nil {
 		slog.Warn("telegraph fetch failed", "path", path, "error", err)
-		return c.Send(msg.TphFetchFailed)
+		return c.Send(cat.TphFetchFailed)
 	}
 	if len(page.Content) == 0 {
-		return c.Send(msg.TphEmptyContent)
+		return c.Send(cat.TphEmptyContent)
 	}
 
 	markdown := telegraph.RenderMarkdown(page)
@@ -83,11 +83,11 @@ func (h *TelegraphHandler) OnTelegraph(c tele.Context) error {
 	sent, err := c.Bot().Send(c.Chat(), doc)
 	if err != nil {
 		slog.Error("telegraph upload failed", "error", err, "user_id", user.ID, "path", path)
-		return c.Send(msg.TphFetchFailed)
+		return c.Send(cat.TphFetchFailed)
 	}
 	if sent.Document == nil {
 		slog.Error("telegraph upload returned no document", "user_id", user.ID, "path", path)
-		return c.Send(msg.TphFetchFailed)
+		return c.Send(cat.TphFetchFailed)
 	}
 
 	// Replicate the regular media pipeline: check duplicate, forward to storage, save.
@@ -96,13 +96,13 @@ func (h *TelegraphHandler) OnTelegraph(c tele.Context) error {
 		// Telegram should always return a UniqueID; bail rather than insert a row
 		// that would collide with itself on re-upload.
 		slog.Error("telegraph upload missing file_unique_id", "user_id", user.ID, "path", path)
-		return c.Send(msg.TphFetchFailed)
+		return c.Send(cat.TphFetchFailed)
 	}
 
 	isDup, err := h.fileService.CheckDuplicate(user.ID, fileUniqueID)
 	if err != nil {
 		slog.Error("telegraph duplicate check failed", "error", err, "user_id", user.ID, "file_unique_id", fileUniqueID)
-		return c.Send(msg.FileSaveFailed)
+		return c.Send(cat.FileSaveFailed)
 	}
 	if isDup {
 		// Same article previously saved in this chat — silently skip indexing,
@@ -130,10 +130,10 @@ func (h *TelegraphHandler) OnTelegraph(c tele.Context) error {
 
 	if _, err := h.fileService.SaveFile(user.ID, info, msgInfo, c.Bot(), sent, h.storage); err != nil {
 		slog.Error("telegraph save file failed", "error", err, "user_id", user.ID, "path", path)
-		return c.Send(msg.FileSaveFailed)
+		return c.Send(cat.FileSaveFailed)
 	}
 
-	return c.Send(fmt.Sprintf(msg.TphSaved, fileName))
+	return c.Send(fmt.Sprintf(cat.TphSaved, fileName))
 }
 
 // tphFileNameSanitizer matches characters Telegram/Windows/Linux commonly reject

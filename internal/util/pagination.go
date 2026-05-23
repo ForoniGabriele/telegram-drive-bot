@@ -33,7 +33,8 @@ func (p *Pagination) HasNext() bool {
 	return p.Page < p.TotalPages()
 }
 
-// PageLabel returns the "第X/Y页" display string.
+// PageLabel returns a language-neutral "current / total" page display string
+// suitable for the middle button of a pagination row.
 func (p *Pagination) PageLabel() string {
-	return fmt.Sprintf("第%d/%d页", p.Page, p.TotalPages())
+	return fmt.Sprintf("%d / %d", p.Page, p.TotalPages())
 }
