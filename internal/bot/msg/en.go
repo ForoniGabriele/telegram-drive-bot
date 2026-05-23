@@ -85,6 +85,7 @@ Send any file / photo / video / audio and I will store and index it for you.
 📌 Commands:
 /list - Browse my library
 /search <keyword> - Search files
+/ss <keyword> - Exact search (skip vector layer)
 /stats - Show statistics
 /rand [count] - Random media (default 5, max 10)
 /randv [count] - Random videos
