@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"ForoniGabriele/telegram-drive-bot/internal/healthcheck"
+
 	"tg-drive-bot/database"
 	"tg-drive-bot/internal/bot"
 	"tg-drive-bot/internal/config"
@@ -30,6 +32,7 @@ func main() {
 }
 
 func run() int {
+	healthcheck.Start()
 	// 初始化log
 	if _, err := logger.Init(os.Stderr); err != nil {
 		// logger not ready yet — fall back to stderr
