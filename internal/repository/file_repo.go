@@ -106,7 +106,7 @@ func (r *FileRepo) ListByUser(userID uint, fileType string, page, pageSize int) 
 	}
 
 	var files []model.File
-	err := db.Order("created_at DESC, id DESC").
+	err := db.Order("file_name ASC, id ASC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&files).Error
@@ -208,8 +208,8 @@ func (r *FileRepo) Search(userID uint, query string, fileType string, page, page
 
 	var files []model.File
 	err := db.
-		Order(gorm.Expr("ts_rank(search_vector, plainto_tsquery('simple', ?)) DESC", query)).
-		Order("id DESC").
+	    Order(gorm.Expr("ts_rank(search_vector, plainto_tsquery('simple', ?)) DESC", query)).
+	    Order("file_name ASC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&files).Error
@@ -233,7 +233,7 @@ func (r *FileRepo) SearchFallback(userID uint, query string, fileType string, pa
 	}
 
 	var files []model.File
-	err := db.Order("created_at DESC, id DESC").
+	err := db.Order("file_name ASC, id ASC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&files).Error
