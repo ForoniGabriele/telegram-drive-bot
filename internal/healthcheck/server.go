@@ -3,6 +3,7 @@ package healthcheck
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 )
@@ -20,6 +21,8 @@ func Start() {
 	})
 
 	go func() {
-		http.ListenAndServe(":"+port, nil)
+		if err := http.ListenAndServe(":"+port, nil); err != nil {
+			slog.Error("healthcheck server failed", "error", err)
+		}
 	}()
 }
