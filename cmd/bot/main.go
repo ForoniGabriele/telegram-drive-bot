@@ -10,11 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"tg-drive-bot/internal/healthcheck"
-
 	"tg-drive-bot/database"
 	"tg-drive-bot/internal/bot"
 	"tg-drive-bot/internal/config"
+	"tg-drive-bot/internal/healthcheck" // ← aggiunto qui
 	"tg-drive-bot/internal/logger"
 	"tg-drive-bot/internal/model"
 	"tg-drive-bot/internal/repository"
