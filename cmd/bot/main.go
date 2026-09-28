@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"ForoniGabriele/telegram-drive-bot/internal/healthcheck"
+	"tg-drive-bot/internal/healthcheck"
 
 	"tg-drive-bot/database"
 	"tg-drive-bot/internal/bot"
